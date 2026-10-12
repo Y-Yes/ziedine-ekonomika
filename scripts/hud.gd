@@ -1,10 +1,10 @@
 ## Hud
 ##
 ## Screen-space interface: money & statistics, pollution meter, year progress,
-## market event / disaster banners, station legend, the selected-station
-## upgrade shop, action buttons (raw material, clean-up), the yearly report
-## with investment cards and the start / final overlay. Everything is built in
-## code so the project needs no UI scenes.
+## market event / disaster banners, station table, the selected-station
+## upgrade shop, action buttons, the yearly report with investment cards, the
+## start screen (difficulty, tutorial) and the final screen. Hosts the
+## tutorial and the sorting mini-game. Everything is built in code.
 class_name Hud
 extends CanvasLayer
 
@@ -12,9 +12,20 @@ const DESIGN_W := 1152.0
 const DESIGN_H := 648.0
 const KINDS := ["speed", "cap", "value"]
 const BAR_W := 260.0
+const FONT_PATH := "res://art/fonts/Nunito-Bold.ttf"
+const FONT_BOLD_PATH := "res://art/fonts/Nunito-ExtraBold.ttf"
+
+# Investment card categories -> colour + label
+const CATEGORY := {
+	"eco": {"label": "EKOLOGIJA", "color": Color(0.35, 0.8, 0.5)},
+	"prod": {"label": "GAMYBA", "color": Color(0.45, 0.65, 1.0)},
+	"fin": {"label": "FINANSAI", "color": Color(1.0, 0.78, 0.3)},
+}
 
 var game: Node
 
+var font: Font
+var bold: Font
 var _root: Control
 var _icons: Texture2D
 
@@ -24,6 +35,7 @@ var income_label: Label
 var circ_label: Label
 var loops_label: Label
 var status_label: Label
+var mute_btn: Button
 
 var pol_label: Label
 var pol_fill: ColorRect
@@ -31,7 +43,7 @@ var pol_flash: float = 0.0
 var year_label: Label
 var year_fill: ColorRect
 
-var legend_labels: Array[Label] = []
+var table: StationTable
 
 var event_panel: PanelContainer
 var event_title: Label
@@ -56,20 +68,53 @@ var clean_btn: Button
 
 var report: ColorRect
 var report_title: Label
-var report_text: Label
-var report_goal: Label
+var report_tiles: Array[Label] = []
+var report_goal: PanelContainer
+var report_goal_label: Label
 var card_btns: Array[Button] = []
+var card_chip: Array[Label] = []
+var card_title: Array[Label] = []
+var card_desc: Array[Label] = []
 
-var overlay: Control
-var overlay_title: Label
-var overlay_text: Label
-var overlay_btn: Button
+var overlay: ColorRect
+var start_box: VBoxContainer
+var final_box: VBoxContainer
+var final_title: Label
+var final_text: Label
+var final_tiles: Array[Label] = []
+var final_score_label: Label
+var diff_btns: Array[Button] = []
+var tut_check: CheckBox
+var best_label: Label
+var selected_diff: int = 1
+
+var tutorial: Tutorial
+var sorting: Sorting
+
+var _money_bump: float = 0.0
 
 func setup(g: Node) -> void:
 	game = g
 	if ResourceLoader.exists("res://art/ikonos.png"):
 		_icons = load("res://art/ikonos.png")
+	_load_fonts()
 	_build()
+
+func _load_fonts() -> void:
+	var old := ThemeDB.fallback_font
+	if ResourceLoader.exists(FONT_PATH):
+		var f: FontFile = load(FONT_PATH)
+		f.fallbacks = [old]
+		font = f
+		ThemeDB.fallback_font = f
+	else:
+		font = old
+	if ResourceLoader.exists(FONT_BOLD_PATH):
+		var fb: FontFile = load(FONT_BOLD_PATH)
+		fb.fallbacks = [old]
+		bold = fb
+	else:
+		bold = font
 
 # --- Construction ----------------------------------------------------------
 
@@ -77,12 +122,17 @@ func _build() -> void:
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var th := Theme.new()
+	th.default_font = font
+	_root.theme = th
 	add_child(_root)
 
-	title_label = _label(_root, Vector2(20, 8), 26, Color(0.85, 0.92, 1.0))
+	title_label = _label(_root, Vector2(20, 6), 26, Color(0.85, 0.92, 1.0))
+	title_label.add_theme_font_override("font", bold)
 	title_label.text = "Žiedinė ekonomika"
-	money_label = _label(_root, Vector2(54, 42), 26, Color(1.0, 0.88, 0.45))
-	income_label = _label(_root, Vector2(56, 74), 14, Color(0.75, 0.85, 0.7))
+	money_label = _label(_root, Vector2(54, 40), 28, Color(1.0, 0.88, 0.45))
+	money_label.add_theme_font_override("font", bold)
+	income_label = _label(_root, Vector2(56, 76), 14, Color(0.75, 0.85, 0.7))
 	circ_label = _label(_root, Vector2(50, 98), 17, Color(0.75, 0.95, 0.8))
 	loops_label = _label(_root, Vector2(50, 124), 17, Color(0.8, 0.9, 1.0))
 	status_label = _label(_root, Vector2(20, 152), 15, Color(0.95, 0.8, 0.4))
@@ -91,7 +141,10 @@ func _build() -> void:
 	_icon(2, Vector2(21, 126), 22)
 
 	_build_bars()
-	_build_legend()
+	table = StationTable.new()
+	table.setup(game, font, bold)
+	table.position = Vector2(14, DESIGN_H - table.size.y - 12)
+	_root.add_child(table)
 	_build_event_banner()
 	_build_alert()
 	_build_panel()
@@ -99,11 +152,11 @@ func _build() -> void:
 	_build_report()
 	_build_overlay()
 
-func _style(bg: Color, border: Color, radius: int = 10) -> StyleBoxFlat:
+func _style(bg: Color, border: Color, radius: int = 10, bw: int = 2) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
 	sb.border_color = border
-	sb.set_border_width_all(2)
+	sb.set_border_width_all(bw)
 	sb.set_corner_radius_all(radius)
 	sb.content_margin_left = 12
 	sb.content_margin_right = 12
@@ -118,8 +171,14 @@ func _button_styles(b: Button, accent: Color) -> void:
 	b.add_theme_stylebox_override("disabled", _style(Color(0.13, 0.15, 0.2), Color(0.22, 0.25, 0.32), 8))
 	b.add_theme_color_override("font_color", Color(1, 1, 1))
 	b.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+	b.add_theme_color_override("font_pressed_color", Color(1, 1, 1))
 	b.add_theme_color_override("font_disabled_color", Color(0.5, 0.55, 0.62))
 	b.focus_mode = Control.FOCUS_NONE
+	if not b.mouse_entered.is_connected(_hover_sound):
+		b.mouse_entered.connect(_hover_sound)
+
+func _hover_sound() -> void:
+	Sfx.play("click", 0.1, 1.4)
 
 func _bar(pos: Vector2, h: float, bg: Color) -> ColorRect:
 	var back := ColorRect.new()
@@ -142,16 +201,22 @@ func _build_bars() -> void:
 	year_label = _label(_root, Vector2(x, 52), 14, Color(0.75, 0.85, 1.0))
 	year_fill = _bar(Vector2(x, 72), 8, Color(0.16, 0.19, 0.24))
 	year_fill.color = Color(0.45, 0.65, 1.0)
+	mute_btn = Button.new()
+	mute_btn.position = Vector2(DESIGN_W - 20.0 - 150.0, 84)
+	mute_btn.size = Vector2(150, 26)
+	mute_btn.add_theme_font_size_override("font_size", 12)
+	_button_styles(mute_btn, Color(0.5, 0.55, 0.7))
+	mute_btn.pressed.connect(_toggle_mute)
+	_root.add_child(mute_btn)
 
-func _build_legend() -> void:
-	var head := _label(_root, Vector2(20, 430), 15, Color(0.7, 0.8, 0.95))
-	head.text = "Ciklas  (G – greitis, S – sandėlis, V – vertė)"
-	for i in Pipeline.count():
-		var l := _label(_root, Vector2(20, 456 + i * 22), 14)
-		l.add_theme_color_override("font_color", Pipeline.color_of(i))
-		legend_labels.append(l)
-	var hint := _label(_root, Vector2(20, 590), 12, Color(0.55, 0.62, 0.72))
-	hint.text = "Spausk stotį – rankinis darbas + patobulinimai.\nGaudyk € monetas!  Tarpas – žaliava,  V – valymas."
+func _toggle_mute() -> void:
+	if Sfx.inst != null:
+		Sfx.inst.set_muted(not Sfx.inst.muted)
+	_refresh_mute()
+
+func _refresh_mute() -> void:
+	var m := Sfx.inst != null and Sfx.inst.muted
+	mute_btn.text = "Garsas išjungtas (M)" if m else "Garsas įjungtas (M)"
 
 func _build_event_banner() -> void:
 	event_panel = PanelContainer.new()
@@ -165,6 +230,7 @@ func _build_event_banner() -> void:
 	vb.add_theme_constant_override("separation", 2)
 	event_panel.add_child(vb)
 	event_title = _center_label(vb, 18, Color(1.0, 0.85, 0.4))
+	event_title.add_theme_font_override("font", bold)
 	event_desc = _center_label(vb, 14, Color(0.95, 0.92, 0.85))
 	var bar_bg := ColorRect.new()
 	bar_bg.color = Color(0.3, 0.25, 0.1)
@@ -186,117 +252,8 @@ func _build_alert() -> void:
 	var vb := VBoxContainer.new()
 	alert_panel.add_child(vb)
 	alert_title = _center_label(vb, 18, Color(1.0, 0.6, 0.4))
+	alert_title.add_theme_font_override("font", bold)
 	alert_desc = _center_label(vb, 13, Color(1.0, 0.9, 0.85))
-
-func _center_label(parent: Control, size: int, color: Color) -> Label:
-	var l := Label.new()
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	parent.add_child(l)
-	return l
-
-func _build_panel() -> void:
-	panel = PanelContainer.new()
-	panel.position = Vector2(DESIGN_W - 330, 92)
-	panel.custom_minimum_size = Vector2(310, 0)
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	panel.visible = false
-	_root.add_child(panel)
-
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 6)
-	panel.add_child(vb)
-
-	panel_title = Label.new()
-	panel_title.add_theme_font_size_override("font_size", 21)
-	vb.add_child(panel_title)
-
-	panel_fact = Label.new()
-	panel_fact.add_theme_font_size_override("font_size", 12)
-	panel_fact.add_theme_color_override("font_color", Color(0.65, 0.73, 0.84))
-	panel_fact.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	panel_fact.custom_minimum_size = Vector2(286, 0)
-	vb.add_child(panel_fact)
-
-	for i in KINDS.size():
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		vb.add_child(row)
-		var texts := VBoxContainer.new()
-		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		texts.add_theme_constant_override("separation", 0)
-		row.add_child(texts)
-		var n := Label.new()
-		n.add_theme_font_size_override("font_size", 15)
-		texts.add_child(n)
-		var d := Label.new()
-		d.add_theme_font_size_override("font_size", 12)
-		d.add_theme_color_override("font_color", Color(0.72, 0.8, 0.9))
-		texts.add_child(d)
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(78, 40)
-		b.add_theme_font_size_override("font_size", 16)
-		var kind: String = KINDS[i]
-		b.pressed.connect(func(): game.upgrade_selected(kind))
-		row.add_child(b)
-		row_name.append(n)
-		row_desc.append(d)
-		row_btn.append(b)
-
-func _build_buttons() -> void:
-	clean_btn = Button.new()
-	clean_btn.position = Vector2(DESIGN_W - 330, DESIGN_H - 136)
-	clean_btn.size = Vector2(310, 54)
-	clean_btn.add_theme_font_size_override("font_size", 14)
-	_button_styles(clean_btn, Color(0.3, 0.7, 0.9))
-	clean_btn.pressed.connect(func(): game.clean_up())
-	_root.add_child(clean_btn)
-
-	raw_btn = Button.new()
-	raw_btn.position = Vector2(DESIGN_W - 330, DESIGN_H - 74)
-	raw_btn.size = Vector2(310, 54)
-	raw_btn.add_theme_font_size_override("font_size", 14)
-	_button_styles(raw_btn, Color(0.85, 0.55, 0.25))
-	raw_btn.pressed.connect(func(): game.buy_raw())
-	_root.add_child(raw_btn)
-
-func _build_report() -> void:
-	report = ColorRect.new()
-	report.color = Color(0.02, 0.03, 0.05, 0.8)
-	report.set_anchors_preset(Control.PRESET_FULL_RECT)
-	report.mouse_filter = Control.MOUSE_FILTER_STOP
-	report.visible = false
-	_root.add_child(report)
-	var cc := CenterContainer.new()
-	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
-	report.add_child(cc)
-	var pc := PanelContainer.new()
-	pc.add_theme_stylebox_override("panel", _style(Color(0.08, 0.1, 0.15, 0.98), Color(0.45, 0.65, 1.0), 14))
-	cc.add_child(pc)
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 10)
-	pc.add_child(vb)
-	report_title = _center_label(vb, 30, Color(0.85, 0.92, 1.0))
-	report_text = _center_label(vb, 16, Color(0.85, 0.9, 0.96))
-	report_goal = _center_label(vb, 17, Color(1, 1, 1))
-	var pick := _center_label(vb, 16, Color(1.0, 0.85, 0.45))
-	pick.text = "Pasirink vieną investiciją ateinantiems metams:"
-	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 12)
-	hb.alignment = BoxContainer.ALIGNMENT_CENTER
-	vb.add_child(hb)
-	var accents := [Color(0.35, 0.8, 0.5), Color(0.45, 0.65, 1.0), Color(0.85, 0.6, 1.0)]
-	for i in 3:
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(220, 110)
-		b.add_theme_font_size_override("font_size", 15)
-		_button_styles(b, accents[i])
-		var idx := i
-		b.pressed.connect(func(): game.choose_card(idx))
-		hb.add_child(b)
-		card_btns.append(b)
 
 func _label(parent: Control, pos: Vector2, size: int, color: Color = Color(0.92, 0.95, 1.0)) -> Label:
 	var l := Label.new()
@@ -324,74 +281,373 @@ func _icon(idx: int, pos: Vector2, size: float) -> void:
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(tr)
 
+func _center_label(parent: Control, size: int, color: Color) -> Label:
+	var l := Label.new()
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(l)
+	return l
+
+func _build_panel() -> void:
+	panel = PanelContainer.new()
+	panel.position = Vector2(DESIGN_W - 330, 118)
+	panel.custom_minimum_size = Vector2(310, 0)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.visible = false
+	_root.add_child(panel)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	panel.add_child(vb)
+
+	panel_title = Label.new()
+	panel_title.add_theme_font_size_override("font_size", 21)
+	panel_title.add_theme_font_override("font", bold)
+	vb.add_child(panel_title)
+
+	panel_fact = Label.new()
+	panel_fact.add_theme_font_size_override("font_size", 12)
+	panel_fact.add_theme_color_override("font_color", Color(0.65, 0.73, 0.84))
+	panel_fact.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	panel_fact.custom_minimum_size = Vector2(286, 0)
+	vb.add_child(panel_fact)
+
+	for i in KINDS.size():
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		vb.add_child(row)
+		var texts := VBoxContainer.new()
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.add_theme_constant_override("separation", 0)
+		row.add_child(texts)
+		var n := Label.new()
+		n.add_theme_font_size_override("font_size", 15)
+		texts.add_child(n)
+		var d := Label.new()
+		d.add_theme_font_size_override("font_size", 12)
+		d.add_theme_color_override("font_color", Color(0.72, 0.8, 0.9))
+		texts.add_child(d)
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(78, 40)
+		b.add_theme_font_size_override("font_size", 16)
+		b.add_theme_font_override("font", bold)
+		var kind: String = KINDS[i]
+		b.pressed.connect(func(): game.upgrade_selected(kind))
+		row.add_child(b)
+		row_name.append(n)
+		row_desc.append(d)
+		row_btn.append(b)
+
+func _build_buttons() -> void:
+	clean_btn = Button.new()
+	clean_btn.position = Vector2(DESIGN_W - 330, DESIGN_H - 136)
+	clean_btn.size = Vector2(310, 54)
+	clean_btn.add_theme_font_size_override("font_size", 14)
+	_button_styles(clean_btn, Color(0.3, 0.7, 0.9))
+	clean_btn.pressed.connect(func(): game.clean_up())
+	_root.add_child(clean_btn)
+
+	raw_btn = Button.new()
+	raw_btn.position = Vector2(DESIGN_W - 330, DESIGN_H - 74)
+	raw_btn.size = Vector2(310, 54)
+	raw_btn.add_theme_font_size_override("font_size", 14)
+	_button_styles(raw_btn, Color(0.85, 0.55, 0.25))
+	raw_btn.pressed.connect(func(): game.buy_raw())
+	_root.add_child(raw_btn)
+
+# --- Yearly report ---------------------------------------------------------------
+
+func _build_report() -> void:
+	report = ColorRect.new()
+	report.color = Color(0.02, 0.03, 0.05, 0.82)
+	report.set_anchors_preset(Control.PRESET_FULL_RECT)
+	report.mouse_filter = Control.MOUSE_FILTER_STOP
+	report.visible = false
+	_root.add_child(report)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	report.add_child(cc)
+	var pc := PanelContainer.new()
+	var psb := _style(Color(0.07, 0.09, 0.14, 0.98), Color(0.45, 0.65, 1.0), 18)
+	psb.content_margin_left = 24
+	psb.content_margin_right = 24
+	psb.content_margin_top = 18
+	psb.content_margin_bottom = 20
+	psb.shadow_color = Color(0, 0, 0, 0.5)
+	psb.shadow_size = 20
+	pc.add_theme_stylebox_override("panel", psb)
+	cc.add_child(pc)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 12)
+	pc.add_child(vb)
+
+	report_title = _center_label(vb, 30, Color(0.88, 0.94, 1.0))
+	report_title.add_theme_font_override("font", bold)
+
+	# stat tiles
+	var tiles := HBoxContainer.new()
+	tiles.add_theme_constant_override("separation", 10)
+	tiles.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_child(tiles)
+	var tile_defs := [["PAJAMOS", Color(1.0, 0.85, 0.4)], ["Į SĄVARTYNĄ", Color(0.9, 0.65, 0.5)],
+		["TARŠA", Color(1.0, 0.55, 0.45)], ["ŽIEDINUMAS", Color(0.55, 1.0, 0.65)]]
+	for td in tile_defs:
+		var t := PanelContainer.new()
+		t.add_theme_stylebox_override("panel", _style(Color(0.12, 0.14, 0.2), Color(td[1], 0.35), 10, 1))
+		t.custom_minimum_size = Vector2(150, 0)
+		tiles.add_child(t)
+		var tv := VBoxContainer.new()
+		tv.add_theme_constant_override("separation", 0)
+		t.add_child(tv)
+		var big := _center_label(tv, 26, td[1])
+		big.add_theme_font_override("font", bold)
+		var small := _center_label(tv, 11, Color(0.65, 0.72, 0.82))
+		small.text = td[0]
+		report_tiles.append(big)
+
+	# EU goal badge
+	var gc := CenterContainer.new()
+	vb.add_child(gc)
+	report_goal = PanelContainer.new()
+	gc.add_child(report_goal)
+	report_goal_label = Label.new()
+	report_goal_label.add_theme_font_size_override("font_size", 16)
+	report_goal_label.add_theme_font_override("font", bold)
+	report_goal.add_child(report_goal_label)
+
+	var sep := HSeparator.new()
+	vb.add_child(sep)
+	var pick := _center_label(vb, 15, Color(0.8, 0.86, 0.95))
+	pick.text = "Pasirink VIENĄ investiciją ateinantiems metams:"
+
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 14)
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_child(hb)
+	for i in 3:
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(210, 150)
+		b.focus_mode = Control.FOCUS_NONE
+		var idx := i
+		b.pressed.connect(func(): Sfx.play("card", 0.0); game.choose_card(idx))
+		b.mouse_entered.connect(_hover_sound)
+		hb.add_child(b)
+		var m := MarginContainer.new()
+		m.set_anchors_preset(Control.PRESET_FULL_RECT)
+		m.add_theme_constant_override("margin_left", 12)
+		m.add_theme_constant_override("margin_right", 12)
+		m.add_theme_constant_override("margin_top", 10)
+		m.add_theme_constant_override("margin_bottom", 10)
+		m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(m)
+		var cv := VBoxContainer.new()
+		cv.add_theme_constant_override("separation", 6)
+		cv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		m.add_child(cv)
+		var chip := Label.new()
+		chip.add_theme_font_size_override("font_size", 11)
+		chip.add_theme_font_override("font", bold)
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cv.add_child(chip)
+		var tl := Label.new()
+		tl.add_theme_font_size_override("font_size", 19)
+		tl.add_theme_font_override("font", bold)
+		tl.add_theme_color_override("font_color", Color.WHITE)
+		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		tl.custom_minimum_size = Vector2(186, 0)
+		tl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cv.add_child(tl)
+		var line := ColorRect.new()
+		line.custom_minimum_size = Vector2(186, 2)
+		line.color = Color(1, 1, 1, 0.15)
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cv.add_child(line)
+		var dl := Label.new()
+		dl.add_theme_font_size_override("font_size", 14)
+		dl.add_theme_color_override("font_color", Color(0.78, 0.84, 0.92))
+		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		dl.custom_minimum_size = Vector2(186, 0)
+		dl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cv.add_child(dl)
+		card_btns.append(b)
+		card_chip.append(chip)
+		card_title.append(tl)
+		card_desc.append(dl)
+
+# --- Start / final overlay -------------------------------------------------------
+
 func _build_overlay() -> void:
 	overlay = ColorRect.new()
-	overlay.color = Color(0.02, 0.03, 0.05, 0.85)
+	overlay.color = Color(0.02, 0.03, 0.05, 0.86)
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	_root.add_child(overlay)
-
 	var cc := CenterContainer.new()
 	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(cc)
+	var holder := VBoxContainer.new()
+	cc.add_child(holder)
 
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 14)
-	vb.alignment = BoxContainer.ALIGNMENT_CENTER
-	cc.add_child(vb)
+	# Start screen
+	start_box = VBoxContainer.new()
+	start_box.add_theme_constant_override("separation", 12)
+	holder.add_child(start_box)
+	var t := _center_label(start_box, 50, Color(0.85, 0.95, 1.0))
+	t.add_theme_font_override("font", bold)
+	t.text = "Žiedinė ekonomika"
+	var st := _center_label(start_box, 17, Color(0.65, 0.9, 0.7))
+	st.text = "Valdyk žiedinės ekonomikos įmonių grandinę 10 metų – uždirbk ir neleisk planetai užsidegti"
+	var how := _center_label(start_box, 14, Color(0.75, 0.82, 0.92))
+	how.text = ("Spausk stotis – rankinis darbas  •  Pirk patobulinimus  •  Gaudyk € monetas  •  Rūšiuok atliekas\n"
+		+ "Tarpas – nauja žaliava  •  V – valymas  •  Esc – pauzė  •  M – garsas")
+	var sp := Control.new()
+	sp.custom_minimum_size = Vector2(0, 6)
+	start_box.add_child(sp)
+	var dl := _center_label(start_box, 15, Color(1.0, 0.85, 0.45))
+	dl.add_theme_font_override("font", bold)
+	dl.text = "SUNKUMO LYGIS"
+	var dh := HBoxContainer.new()
+	dh.add_theme_constant_override("separation", 12)
+	dh.alignment = BoxContainer.ALIGNMENT_CENTER
+	start_box.add_child(dh)
+	var diffs: Array = game.DIFFICULTIES
+	for i in diffs.size():
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(220, 92)
+		b.add_theme_font_size_override("font_size", 14)
+		b.text = "%s\n%s" % [diffs[i]["title"], diffs[i]["desc"]]
+		var idx := i
+		b.pressed.connect(func(): Sfx.play("click"); _select_diff(idx))
+		dh.add_child(b)
+		diff_btns.append(b)
+	var cc2 := CenterContainer.new()
+	start_box.add_child(cc2)
+	tut_check = CheckBox.new()
+	tut_check.text = "Rodyti vedlį (pirmam kartui)"
+	tut_check.focus_mode = Control.FOCUS_NONE
+	tut_check.add_theme_font_size_override("font_size", 14)
+	tut_check.button_pressed = not bool(Settings.get_value("tutorial_done", false))
+	cc2.add_child(tut_check)
+	var cc3 := CenterContainer.new()
+	start_box.add_child(cc3)
+	var go := Button.new()
+	go.custom_minimum_size = Vector2(260, 56)
+	go.add_theme_font_size_override("font_size", 22)
+	go.add_theme_font_override("font", bold)
+	go.text = "PRADĖTI"
+	_button_styles(go, Color(0.35, 0.8, 0.5))
+	go.pressed.connect(_on_start_pressed)
+	cc3.add_child(go)
+	best_label = _center_label(start_box, 13, Color(0.6, 0.68, 0.8))
+	_select_diff(int(Settings.get_value("difficulty", 1)))
 
-	overlay_title = _center_label(vb, 40, Color(0.85, 0.93, 1.0))
+	# Final screen
+	final_box = VBoxContainer.new()
+	final_box.add_theme_constant_override("separation", 14)
+	final_box.visible = false
+	holder.add_child(final_box)
+	var fsub := _center_label(final_box, 16, Color(0.65, 0.9, 0.7))
+	fsub.text = "10 metų baigėsi! Tavo įmonės titulas:"
+	final_title = _center_label(final_box, 40, Color(1.0, 0.88, 0.45))
+	final_title.add_theme_font_override("font", bold)
+	var ftiles := HBoxContainer.new()
+	ftiles.add_theme_constant_override("separation", 10)
+	ftiles.alignment = BoxContainer.ALIGNMENT_CENTER
+	final_box.add_child(ftiles)
+	var fdefs := [["UŽDIRBTA", Color(1.0, 0.85, 0.4)], ["CIKLŲ", Color(0.6, 0.8, 1.0)],
+		["ŽIEDINUMAS", Color(0.55, 1.0, 0.65)], ["TARŠA", Color(1.0, 0.55, 0.45)], ["SĄVARTYNE", Color(0.9, 0.65, 0.5)]]
+	for td in fdefs:
+		var t2 := PanelContainer.new()
+		t2.add_theme_stylebox_override("panel", _style(Color(0.12, 0.14, 0.2), Color(td[1], 0.35), 10, 1))
+		t2.custom_minimum_size = Vector2(138, 0)
+		ftiles.add_child(t2)
+		var tv := VBoxContainer.new()
+		tv.add_theme_constant_override("separation", 0)
+		t2.add_child(tv)
+		var big := _center_label(tv, 24, td[1])
+		big.add_theme_font_override("font", bold)
+		var small := _center_label(tv, 11, Color(0.65, 0.72, 0.82))
+		small.text = td[0]
+		final_tiles.append(big)
+	final_score_label = _center_label(final_box, 30, Color(1, 1, 1))
+	final_score_label.add_theme_font_override("font", bold)
+	final_text = _center_label(final_box, 14, Color(0.75, 0.82, 0.92))
+	final_text.custom_minimum_size = Vector2(760, 0)
+	final_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var cc4 := CenterContainer.new()
+	final_box.add_child(cc4)
+	var again := Button.new()
+	again.custom_minimum_size = Vector2(260, 52)
+	again.add_theme_font_size_override("font_size", 20)
+	again.add_theme_font_override("font", bold)
+	again.text = "Žaisti dar kartą"
+	_button_styles(again, Color(0.35, 0.8, 0.5))
+	again.pressed.connect(func(): show_start_overlay())
+	cc4.add_child(again)
 
-	overlay_text = Label.new()
-	overlay_text.add_theme_font_size_override("font_size", 16)
-	overlay_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	overlay_text.add_theme_color_override("font_color", Color(0.82, 0.88, 0.95))
-	overlay_text.custom_minimum_size = Vector2(820, 0)
-	overlay_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(overlay_text)
+func _select_diff(i: int) -> void:
+	selected_diff = clampi(i, 0, diff_btns.size() - 1)
+	var cols := [Color(0.35, 0.8, 0.5), Color(0.45, 0.65, 1.0), Color(0.95, 0.45, 0.35)]
+	for k in diff_btns.size():
+		var c: Color = cols[k]
+		var b := diff_btns[k]
+		if k == selected_diff:
+			b.add_theme_stylebox_override("normal", _style(c.darkened(0.3), Color.WHITE, 10, 3))
+			b.add_theme_stylebox_override("hover", _style(c.darkened(0.25), Color.WHITE, 10, 3))
+		else:
+			b.add_theme_stylebox_override("normal", _style(c.darkened(0.7), c.darkened(0.3), 10))
+			b.add_theme_stylebox_override("hover", _style(c.darkened(0.55), c, 10))
+		b.add_theme_stylebox_override("pressed", _style(c.darkened(0.2), Color.WHITE, 10, 3))
+		b.add_theme_color_override("font_color", Color.WHITE)
+		b.add_theme_color_override("font_hover_color", Color.WHITE)
+		b.focus_mode = Control.FOCUS_NONE
 
-	var center_btn := CenterContainer.new()
-	vb.add_child(center_btn)
-	overlay_btn = Button.new()
-	overlay_btn.custom_minimum_size = Vector2(240, 52)
-	overlay_btn.add_theme_font_size_override("font_size", 20)
-	_button_styles(overlay_btn, Color(0.35, 0.8, 0.5))
-	overlay_btn.pressed.connect(_on_overlay_pressed)
-	center_btn.add_child(overlay_btn)
-
-# --- Overlays / panels -------------------------------------------------------
+func _on_start_pressed() -> void:
+	Sfx.play("card", 0.0)
+	Settings.set_value("difficulty", selected_diff)
+	game.start_game(selected_diff, tut_check.button_pressed)
 
 func show_start_overlay() -> void:
 	overlay.visible = true
-	overlay_title.text = "Žiedinė ekonomika"
-	overlay_text.text = (
-		"Tau patikėta 10 metų valdyti žiedinės ekonomikos įmonių grandinę!\n\n"
-		+ "Daiktas keliauja: naudotojas → surinkimas → rūšiavimas → perdirbimas → gamykla → parduotuvė → ir vėl pas naudotoją. "
-		+ "Kiekviena stotis prideda produktui vertės, o parduotuvėje jis parduodamas.\n\n"
-		+ "• Spausk stotį (arba 1–6) – ji iškart apdoroja vieną daiktą. Už € pirk patobulinimus.\n"
-		+ "• Ko nespėji apdoroti – keliauja į sąvartyną: auga tarša, mokestis, krenta kainos, kyla gaisrai ir potvyniai.\n"
-		+ "• Gaudyk investuotojų € monetas. Naujos žaliavos pirkimas (Tarpas) – greitas, bet teršia. Valymas (V) – brangus.\n"
-		+ "• Metų pabaigoje – ataskaita, ES žiedinumo tikslas ir investicijos pasirinkimas.\n\n"
-		+ "Gali tapti turtingu ant degančios planetos – arba rasti pusiausvyrą. Esc – pauzė, R – iš naujo."
-	)
-	overlay_btn.text = "Pradėti"
+	start_box.visible = true
+	final_box.visible = false
+	tut_check.button_pressed = not bool(Settings.get_value("tutorial_done", false))
+	var best := int(Settings.get_value("best_score", 0))
+	best_label.text = "Rekordas: %d taškų" % best if best > 0 else ""
+	_refresh_mute()
+
+# --- Overlays / panels -------------------------------------------------------
 
 func show_report(s: Dictionary, cards: Array) -> void:
 	hide_panel()
 	report.visible = true
 	report_title.text = "%d-ųjų metų ataskaita" % int(s["year"])
-	report_text.text = "Pajamos: €%d     Į sąvartyną: %d vnt.     Tarša: %d %%\nŽiedinumo rodiklis: %d %%" % [
-		int(s["earned"]), int(s["landfill"]), int(s["pollution"]), int(s["circ"])]
+	report_tiles[0].text = "€%d" % int(s["earned"])
+	report_tiles[1].text = "%d vnt." % int(s["landfill"])
+	report_tiles[2].text = "%d %%" % int(s["pollution"])
+	report_tiles[3].text = "%d %%" % int(s["circ"])
 	if bool(s["met"]):
-		report_goal.text = "ES tikslas (%d %%) pasiektas!  Premija +€%d" % [int(s["target"]), int(s["reward"])]
-		report_goal.add_theme_color_override("font_color", Color(0.55, 1.0, 0.6))
+		report_goal_label.text = "ES žiedinumo tikslas %d %% – PASIEKTAS!   Premija +€%d" % [int(s["target"]), int(s["reward"])]
+		report_goal_label.add_theme_color_override("font_color", Color(0.6, 1.0, 0.65))
+		report_goal.add_theme_stylebox_override("panel", _style(Color(0.1, 0.25, 0.14), Color(0.4, 0.9, 0.5), 20))
 	else:
-		report_goal.text = "ES tikslas (%d %%) nepasiektas.  Bauda -€%d" % [int(s["target"]), int(-float(s["reward"]))]
-		report_goal.add_theme_color_override("font_color", Color(1.0, 0.5, 0.45))
+		report_goal_label.text = "ES žiedinumo tikslas %d %% – NEPASIEKTAS.   Bauda -€%d" % [int(s["target"]), int(-float(s["reward"]))]
+		report_goal_label.add_theme_color_override("font_color", Color(1.0, 0.65, 0.6))
+		report_goal.add_theme_stylebox_override("panel", _style(Color(0.28, 0.08, 0.07), Color(1.0, 0.45, 0.4), 20))
 	for i in card_btns.size():
 		if i < cards.size():
+			var cat: Dictionary = CATEGORY.get(str(cards[i].get("cat", "fin")), CATEGORY["fin"])
+			var c: Color = cat["color"]
 			card_btns[i].visible = true
-			card_btns[i].text = "%s\n\n%s" % [cards[i]["title"], cards[i]["desc"]]
+			card_btns[i].add_theme_stylebox_override("normal", _style(c.darkened(0.72), c.darkened(0.25), 12, 2))
+			card_btns[i].add_theme_stylebox_override("hover", _style(c.darkened(0.55), c.lightened(0.2), 12, 3))
+			card_btns[i].add_theme_stylebox_override("pressed", _style(c.darkened(0.4), Color.WHITE, 12, 3))
+			card_chip[i].text = "● " + str(cat["label"])
+			card_chip[i].add_theme_color_override("font_color", c)
+			card_title[i].text = str(cards[i]["title"])
+			card_desc[i].text = str(cards[i]["desc"]).replace("\n", " ")
 		else:
 			card_btns[i].visible = false
 
@@ -403,17 +659,27 @@ func show_final(s: Dictionary) -> void:
 	hide_panel()
 	hide_event()
 	overlay.visible = true
-	overlay_title.text = game.final_title()
+	start_box.visible = false
+	final_box.visible = true
+	final_title.text = game.final_title()
+	var score: int = game.final_score()
+	var best := int(Settings.get_value("best_score", 0))
+	final_tiles[0].text = "€%d" % int(game.total_earned)
+	final_tiles[1].text = str(game.loops)
+	final_tiles[2].text = "%d %%" % int(game.circularity())
+	final_tiles[3].text = "%d %%" % int(game.pollution)
+	final_tiles[4].text = "%d vnt." % game.landfilled
+	if score > best:
+		Settings.set_value("best_score", score)
+		final_score_label.text = "%d taškų  –  NAUJAS REKORDAS!" % score
+		final_score_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
+	else:
+		final_score_label.text = "%d taškų   (rekordas: %d)" % [score, best]
+		final_score_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	var goal := "pasiektas" if bool(s["met"]) else "nepasiektas"
-	overlay_text.text = (
-		"10 metų baigėsi!  Paskutinių metų ES tikslas %s.\n\n"
-		+ "Iš viso uždirbta: €%d\nUžbaigtų ciklų: %d\nŽiedinumo rodiklis: %d %%\n"
-		+ "Sąvartyne: %d vnt.     Tarša: %d %%\n\n"
-		+ "GALUTINIAI TAŠKAI: %d\n\n"
-		+ "Taškai = pinigai + planetos būklė + žiedinumas. Turtas ant užterštos planetos vertas mažiau."
-	) % [goal, int(game.total_earned), game.loops, int(game.circularity()), game.landfilled,
-		int(game.pollution), game.final_score()]
-	overlay_btn.text = "Žaisti dar kartą"
+	final_text.text = ("Sunkumas: %s.  Paskutinių metų ES tikslas %s.\n"
+		+ "Taškai = pinigai + planetos būklė + žiedinumas. Turtas ant užterštos planetos vertas mažiau.") % [
+		game.DIFFICULTIES[game.difficulty]["title"], goal]
 
 func hide_overlay() -> void:
 	overlay.visible = false
@@ -450,10 +716,37 @@ func show_alert(title: String, desc: String) -> void:
 	alert_panel.visible = true
 	alert_time = 3.5
 
-# --- Callbacks -------------------------------------------------------------
+# --- Tutorial & sorting --------------------------------------------------------
 
-func _on_overlay_pressed() -> void:
-	game.start_game()
+func start_tutorial() -> void:
+	if tutorial != null and is_instance_valid(tutorial):
+		tutorial.queue_free()
+	tutorial = Tutorial.new()
+	_root.add_child(tutorial)
+	tutorial.setup(game, self, font, bold)
+	tutorial.done.connect(func(): game.tutorial_finished())
+
+func tutorial_notify(what: String) -> void:
+	if tutorial != null and is_instance_valid(tutorial):
+		tutorial.notify(what)
+
+func open_sorting(count: int) -> Sorting:
+	sorting = Sorting.new()
+	_root.add_child(sorting)
+	sorting.open(game, count, font, bold)
+	return sorting
+
+# --- Money feedback ---------------------------------------------------------------
+
+## Screen position the flying coins head to.
+func money_target() -> Vector2:
+	return Vector2(33, 60)
+
+func bump_money() -> void:
+	_money_bump = 1.0
+	Sfx.play("coin", 0.08)
+
+# --- Callbacks -------------------------------------------------------------
 
 func flash_overflow() -> void:
 	pol_flash = 1.0
@@ -468,6 +761,15 @@ func _process(delta: float) -> void:
 		alert_time -= delta
 		if alert_time <= 0.0:
 			alert_panel.visible = false
+	if _money_bump > 0.0:
+		_money_bump = maxf(0.0, _money_bump - delta * 4.0)
+		money_label.pivot_offset = Vector2(0, money_label.size.y * 0.5)
+		var k := 1.0 + 0.18 * _money_bump
+		money_label.scale = Vector2(k, k)
+
+func _input(ev: InputEvent) -> void:
+	if ev is InputEventKey and ev.pressed and not ev.echo and ev.keycode == KEY_M:
+		_toggle_mute()
 
 func refresh() -> void:
 	if game == null:
@@ -481,12 +783,6 @@ func refresh() -> void:
 	loops_label.text = "Užbaigti ciklai: %d" % game.loops
 
 	_update_bars()
-
-	for i in legend_labels.size():
-		var st: Station = game.stations[i]
-		legend_labels[i].text = "%d. %s   G%d  S%d  V%d" % [
-			i + 1, Pipeline.name_of(i), st.speed_level, st.cap_level, st.value_level,
-		]
 
 	var rp: float = game.raw_price()
 	raw_btn.text = "Pirkti naują žaliavą – €%d   [Tarpas]\n(greita, bet +tarša, mažina žiedinumą)" % int(round(rp))

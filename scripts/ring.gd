@@ -42,7 +42,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	if moving:
-		_belt_offset = fmod(_belt_offset + belt_speed * delta, TAU)
+		_belt_offset = fmod(_belt_offset + belt_speed * delta * Station.sim_speed, TAU)
 	_time += delta
 	_planet_anim = fmod(_planet_anim + delta * PLANET_FPS, float(PLANET_FRAMES))
 	queue_redraw()

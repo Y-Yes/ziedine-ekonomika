@@ -33,6 +33,8 @@ var perk_speed: float = 1.0      # permanent multiplier from investment cards
 var cap_bonus: int = 0           # permanent extra slots from investment cards
 var cost_mult: float = 1.0       # upgrade price multiplier (tax relief card)
 var fire: float = 0.0            # seconds left burning (disaster) – station stops
+var sort_alert: float = 0.0      # >0: mixed waste waiting here (seconds left)
+static var sim_speed: float = 1.0   # global slow-motion factor (sorting mini-game)
 var process_rate: float = BASE_RATE
 var capacity: int = BASE_CAP
 var base_radius: float = 40.0
@@ -143,6 +145,7 @@ func reset_levels() -> void:
 	cap_bonus = 0
 	cost_mult = 1.0
 	fire = 0.0
+	sort_alert = 0.0
 	recompute()
 
 # --- Buffer ---------------------------------------------------------------------
@@ -177,7 +180,8 @@ func manual_process() -> bool:
 	_release_one()
 	return true
 
-func _process(delta: float) -> void:
+func _process(real_delta: float) -> void:
+	var delta := real_delta * sim_speed
 	if _sheet != null:
 		var fps := IDLE_FPS
 		if not buffer.is_empty():
@@ -265,6 +269,23 @@ func _draw() -> void:
 		var fwid := font0.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13).x
 		draw_string_outline(font0, Vector2(-fwid * 0.5, -base_radius - 22.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, 4, Color(0, 0, 0, 0.8))
 		draw_string(font0, Vector2(-fwid * 0.5, -base_radius - 22.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(1.0, 0.6, 0.3))
+
+	# Full storage warning – pulsing red ring
+	if buffer.size() >= capacity:
+		var pf := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
+		draw_arc(Vector2.ZERO, base_radius + 4.0, 0.0, TAU, 48, Color(1.0, 0.3, 0.25, 0.35 + 0.4 * pf), 3.0, true)
+
+	# Mixed waste waiting (sorting mini-game)
+	if sort_alert > 0.0:
+		var tt2 := Time.get_ticks_msec() / 1000.0
+		var bob := sin(tt2 * 7.0) * 3.0
+		var bp := Vector2(base_radius * 0.75, -base_radius * 0.75 + bob)
+		draw_circle(bp, 15.0 + 2.0 * sin(tt2 * 10.0), Color(1.0, 0.85, 0.2))
+		draw_circle(bp, 12.0, Color(0.95, 0.55, 0.1))
+		var fnt := ThemeDB.fallback_font
+		draw_string(fnt, bp + Vector2(-4.0, 7.0), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
+		draw_arc(Vector2.ZERO, base_radius + 9.0, -PI * 0.5, -PI * 0.5 + TAU * clampf(sort_alert / 12.0, 0.0, 1.0), 48,
+			Color(1.0, 0.85, 0.2, 0.9), 3.0, true)
 
 	# Selection highlight
 	if selected:

@@ -8,6 +8,8 @@ extends Node2D
 const ICONS := "res://art/ikonos.png"   # coin is the first of 3 icons
 const LIFE := 5.0
 
+var life: float = LIFE
+
 static var _icons: Texture2D
 
 var amount: int = 10
@@ -20,7 +22,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	if _t >= LIFE:
+	if _t >= life:
 		queue_free()
 	queue_redraw()
 
@@ -29,10 +31,10 @@ func hit(p: Vector2) -> bool:
 
 func _draw() -> void:
 	var appear := clampf(_t * 5.0, 0.0, 1.0)
-	var fade := clampf((LIFE - _t) / 0.8, 0.0, 1.0)
+	var fade := clampf((life - _t) / 0.8, 0.0, 1.0)
 	var a := appear * fade
 	# Blink faster when about to vanish
-	if _t > LIFE - 1.5 and int(_t * 8.0) % 2 == 0:
+	if _t > life - 1.5 and int(_t * 8.0) % 2 == 0:
 		a *= 0.5
 	var bob := sin(_t * 4.0) * 3.0
 	var k := appear * (1.0 + 0.08 * sin(_t * 9.0))

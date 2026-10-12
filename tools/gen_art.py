@@ -530,3 +530,82 @@ def main3(outdir):
 
 if __name__ == "__main__" and len(sys.argv) > 2 and sys.argv[2] in ("v2", "v3"):
     main3(sys.argv[1])
+
+
+# ============================================================ v4: sorting mini-game
+SORT_ITEMS = [
+    # 0 PET bottle -> yellow
+    grad("pet", "#d9f4ff", "#7cc8ef") +
+    '', '<g transform="rotate(-12 128 128)"><rect x="98" y="88" width="60" height="130" rx="22" fill="url(#pet)" stroke="#3d8fbf" stroke-width="5"/>'
+        '<rect x="112" y="56" width="32" height="36" rx="6" fill="#d9f4ff" stroke="#3d8fbf" stroke-width="5"/>'
+        '<rect x="108" y="40" width="40" height="18" rx="5" fill="#2f7fd0"/>'
+        '<rect x="98" y="132" width="60" height="34" fill="#ff7a5a"/><rect x="110" y="98" width="10" height="100" rx="5" fill="#fff" opacity=".6"/></g>',
+    # 1 can -> yellow
+    grad("can", "#f2f4f7", "#9aa4b2"),
+    '<rect x="86" y="64" width="84" height="140" rx="14" fill="url(#can)" stroke="#6b7685" stroke-width="5"/>'
+    '<rect x="86" y="100" width="84" height="64" fill="#e0403a"/><path d="M98 132 Q128 112 158 132" stroke="#fff" stroke-width="7" fill="none"/>'
+    '<ellipse cx="128" cy="66" rx="40" ry="8" fill="#cfd5dd"/><rect x="118" y="58" width="20" height="8" rx="3" fill="#8b95a3"/>',
+    # 2 jar -> green
+    grad("jar", "#e9fff2", "#9fdcb7"),
+    '<rect x="78" y="96" width="100" height="116" rx="20" fill="url(#jar)" stroke="#3f9a64" stroke-width="5" opacity=".95"/>'
+    '<rect x="88" y="66" width="80" height="32" rx="6" fill="#d6a23a" stroke="#9a6d12" stroke-width="5"/>'
+    '<rect x="92" y="128" width="72" height="44" rx="6" fill="#fff" opacity=".9"/><circle cx="128" cy="150" r="12" fill="#e0575a"/>'
+    '<rect x="90" y="104" width="10" height="90" rx="5" fill="#fff" opacity=".6"/>',
+    # 3 glass bottle -> green
+    grad("gb", "#7fe0a8", "#1f8a4c"),
+    '<g transform="rotate(10 128 128)"><path d="M112 40 H144 V92 Q172 104 172 136 V214 Q172 222 164 222 H92 Q84 222 84 214 V136 Q84 104 112 92 Z" fill="url(#gb)" stroke="#145c33" stroke-width="5"/>'
+    '<rect x="110" y="32" width="36" height="14" rx="4" fill="#d6a23a"/><rect x="96" y="140" width="64" height="44" rx="6" fill="#f3ead2"/>'
+    '<rect x="96" y="116" width="10" height="90" rx="5" fill="#fff" opacity=".45"/></g>',
+    # 4 newspaper -> blue
+    grad("np", "#ffffff", "#e3e7ee"),
+    '<g transform="rotate(-8 128 128)"><rect x="56" y="64" width="144" height="128" rx="6" fill="url(#np)" stroke="#7d8798" stroke-width="5"/>'
+    '<rect x="70" y="78" width="116" height="20" rx="3" fill="#3a4250"/>'
+    '<rect x="70" y="108" width="52" height="40" rx="3" fill="#9fb3d1"/>'
+    '<path d="M132 112 H186 M132 124 H186 M132 136 H180 M70 160 H186 M70 172 H170" stroke="#9aa3b2" stroke-width="6" stroke-linecap="round"/></g>',
+    # 5 cardboard box -> blue
+    grad("cb", "#e9b878", "#b77a35"),
+    '<path d="M128 72 L196 102 V174 L128 206 L60 174 V102 Z" fill="url(#cb)" stroke="#7a4f1d" stroke-width="5" stroke-linejoin="round"/>'
+    '<path d="M60 102 L128 132 L196 102 M128 132 V206" stroke="#7a4f1d" stroke-width="5" fill="none"/>'
+    '<path d="M94 86 L162 116 V140" stroke="#f3d39c" stroke-width="12" fill="none"/>'
+    '<path d="M76 150 l12 6 M76 162 l12 6" stroke="#7a4f1d" stroke-width="4"/>',
+]
+
+BIN_SPECS = [("#ffe36a", "#e6b916", "#c99f10", "PLASTIKAS\nMETALAS"),
+             ("#6be08f", "#27a855", "#1f8f47", "STIKLAS"),
+             ("#6aa8f0", "#2f72c8", "#2a62ad", "POPIERIUS")]
+
+
+def sort_bin(i, open_=0.0):
+    a, b, lid, _ = BIN_SPECS[i]
+    defs = grad("bb", a, b)
+    body = '<ellipse cx="128" cy="236" rx="90" ry="10" fill="#000" opacity=".25"/>'
+    body += '<path d="M52 92 H204 L190 232 H66 Z" fill="url(#bb)"/>'
+    body += '<path d="M86 112 V212 M128 112 V212 M170 112 V212" stroke="#000" stroke-opacity=".12" stroke-width="8" stroke-linecap="round"/>'
+    body += '<rect x="62" y="96" width="12" height="120" rx="6" fill="#fff" opacity=".25"/>'
+    body += f'<g transform="rotate({-25 * open_:.1f} 44 86)"><rect x="40" y="70" width="176" height="26" rx="12" fill="{lid}"/>'
+    body += '<rect x="58" y="75" width="80" height="7" rx="3.5" fill="#fff" opacity=".4"/></g>'
+    # recycling symbol
+    body += '<g transform="translate(128 160) scale(0.55) translate(-128 -128)">'
+    for k in range(3):
+        body += (f'<g transform="rotate({k * 120} 128 128)"><path d="M128 36 A92 92 0 0 1 207 82 L224 72 L212 128 L162 104 L180 96 '
+                 f'A62 62 0 0 0 128 66 Z" fill="#fff" opacity=".85"/></g>')
+    body += '</g>'
+    return svg(defs, body)
+
+
+def main4(outdir):
+    T = 128
+    sh = Image.new("RGBA", (T * 6, T), (0, 0, 0, 0))
+    for i in range(6):
+        sh.paste(render_static(svg(SORT_ITEMS[2 * i], SORT_ITEMS[2 * i + 1]), T), (i * T, 0))
+    sh.save(os.path.join(outdir, "rusiavimas_daiktai.png"))
+    B = 160
+    bs = Image.new("RGBA", (B * 6, B), (0, 0, 0, 0))   # 3 closed + 3 open lids
+    for i in range(3):
+        bs.paste(render_static(sort_bin(i, 0.0), B), (i * B, 0))
+        bs.paste(render_static(sort_bin(i, 1.0), B), ((i + 3) * B, 0))
+    bs.save(os.path.join(outdir, "konteineriai.png"))
+
+
+if __name__ == "__main__" and len(sys.argv) > 2 and sys.argv[2] in ("v2", "v3", "v4"):
+    main4(sys.argv[1])
