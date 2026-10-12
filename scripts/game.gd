@@ -42,6 +42,8 @@ func _ready() -> void:
 	var vp := get_viewport_rect().size
 	center = Vector2(vp.x * 0.5, vp.y * 0.5 + 14.0)
 
+	_add_background()
+
 	ring = Ring.new()
 	ring.center = center
 	ring.radius = RING_RADIUS
@@ -56,12 +58,28 @@ func _ready() -> void:
 		stations.append(st)
 
 	angular_speed = TAU / LAP_TIME
+	ring.belt_speed = angular_speed
 
 	hud = Hud.new()
 	add_child(hud)
 	hud.setup(self)
 	hud.refresh()
 	hud.show_start_overlay()
+
+## Full-screen background picture behind everything (art/fonas.png).
+func _add_background() -> void:
+	if not ResourceLoader.exists("res://art/fonas.png"):
+		return
+	var layer := CanvasLayer.new()
+	layer.layer = -10
+	add_child(layer)
+	var bg := TextureRect.new()
+	bg.texture = load("res://art/fonas.png")
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(bg)
 
 # --- Game flow -------------------------------------------------------------
 
@@ -104,6 +122,8 @@ func _check_game_over() -> void:
 # --- Main loop -------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	ring.eco_frac = clampf(eco / ECO_START, 0.0, 1.0)
+	ring.moving = running and not paused and not game_over
 	if not running or paused or game_over:
 		return
 	elapsed += delta

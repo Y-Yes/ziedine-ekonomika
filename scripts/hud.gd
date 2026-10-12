@@ -53,9 +53,12 @@ func _build() -> void:
 
 	title_label = _label(Vector2(20, 8), 28, Color(0.85, 0.92, 1.0))
 	title_label.text = "Žiedinė ekonomika"
-	score_label = _label(Vector2(20, 46), 20)
-	points_label = _label(Vector2(20, 74), 17, Color(0.75, 0.95, 0.8))
-	loops_label = _label(Vector2(20, 98), 17, Color(0.8, 0.9, 1.0))
+	score_label = _label(Vector2(50, 46), 20)
+	points_label = _label(Vector2(50, 76), 17, Color(0.75, 0.95, 0.8))
+	loops_label = _label(Vector2(50, 102), 17, Color(0.8, 0.9, 1.0))
+	_icon(0, Vector2(20, 49), 24)   # coin  -> score
+	_icon(1, Vector2(21, 78), 22)   # leaf  -> eco points
+	_icon(2, Vector2(21, 104), 22)  # cycle -> loops
 	status_label = _label(Vector2(20, 126), 15, Color(0.95, 0.8, 0.4))
 
 	_build_eco_bar()
@@ -96,6 +99,24 @@ func _label(pos: Vector2, size: int, color: Color = Color(0.92, 0.95, 1.0)) -> L
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(l)
 	return l
+
+## Small icon from art/ikonos.png (3 square icons: coin, leaf, cycle).
+func _icon(idx: int, pos: Vector2, size: float) -> void:
+	if not ResourceLoader.exists("res://art/ikonos.png"):
+		return
+	var sheet: Texture2D = load("res://art/ikonos.png")
+	var fw := float(sheet.get_width()) / 3.0
+	var at := AtlasTexture.new()
+	at.atlas = sheet
+	at.region = Rect2(fw * idx, 0.0, fw, float(sheet.get_height()))
+	var tr := TextureRect.new()
+	tr.texture = at
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.position = pos
+	tr.size = Vector2(size, size)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(tr)
 
 func _build_panel() -> void:
 	panel = ColorRect.new()

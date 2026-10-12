@@ -1,16 +1,45 @@
 ## Ring
 ##
-## Draws the circular conveyor and provides the angle <-> position math shared by
-## the game controller, the stations and the tokens.
+## Draws the circular conveyor belt (with chevrons moving in the direction of
+## flow, tinted by the stage they lead to), the planet in the middle (it turns
+## grey as ecology drops) and provides the angle <-> position math shared by the
+## game controller, the stations and the tokens.
 class_name Ring
 extends Node2D
+
+const PLANET_OK := "res://art/planeta.png"
+const PLANET_BAD := "res://art/planeta_tarsa.png"
+const PLANET_FRAMES := 24
+const PLANET_FPS := 6.0
 
 var center: Vector2 = Vector2.ZERO
 var radius: float = 200.0
 var step: float = TAU / float(Pipeline.count())
 
+## Belt speed in radians / second (set by the game to match token speed).
+var belt_speed: float = TAU / 9.0
+## 1 = healthy planet, 0 = fully polluted (set by the game).
+var eco_frac: float = 1.0
+## Belt moves only while the game is running.
+var moving: bool = false
+
+var _belt_offset: float = 0.0
+var _planet_anim: float = 0.0
+var _planet_ok: Texture2D
+var _planet_bad: Texture2D
+
 func _ready() -> void:
 	z_index = -1
+	if ResourceLoader.exists(PLANET_OK):
+		_planet_ok = load(PLANET_OK)
+	if ResourceLoader.exists(PLANET_BAD):
+		_planet_bad = load(PLANET_BAD)
+
+func _process(delta: float) -> void:
+	if moving:
+		_belt_offset = fmod(_belt_offset + belt_speed * delta, TAU)
+	_planet_anim = fmod(_planet_anim + delta * PLANET_FPS, float(PLANET_FRAMES))
+	queue_redraw()
 
 ## Base angle (radians) of station `i`. Station 0 sits at the top and the ring
 ## runs clockwise across the screen (screen-space Y points down).
@@ -26,14 +55,40 @@ func station_position(i: int) -> Vector2:
 	return position_for_angle(base_angle(i))
 
 func _draw() -> void:
-	# Outer rail
-	draw_arc(center, radius, 0.0, TAU, 160, Color(0.16, 0.19, 0.25, 1.0), 12.0, true)
-	# Inner highlight
-	draw_arc(center, radius, 0.0, TAU, 160, Color(0.30, 0.36, 0.46, 1.0), 4.0, true)
-	# Dashed direction ticks to hint the flow direction
-	var n := 72
+	_draw_planet()
+	_draw_belt()
+
+func _draw_planet() -> void:
+	if _planet_ok == null:
+		return
+	var sz := radius * 1.3
+	var rect := Rect2(center - Vector2(sz, sz) * 0.5, Vector2(sz, sz))
+	var frame := int(_planet_anim) % PLANET_FRAMES
+	var fw := float(_planet_ok.get_width()) / float(PLANET_FRAMES)
+	var src := Rect2(fw * frame, 0.0, fw, float(_planet_ok.get_height()))
+	draw_texture_rect_region(_planet_ok, rect, src)
+	if _planet_bad != null and eco_frac < 1.0:
+		draw_texture_rect_region(_planet_bad, rect, src, Color(1, 1, 1, clampf(1.0 - eco_frac, 0.0, 1.0)))
+
+func _draw_belt() -> void:
+	# Belt body with two rails
+	draw_arc(center, radius, 0.0, TAU, 180, Color(0.12, 0.14, 0.19, 1.0), 22.0, true)
+	draw_arc(center, radius - 11.0, 0.0, TAU, 180, Color(0.32, 0.38, 0.5, 1.0), 2.5, true)
+	draw_arc(center, radius + 11.0, 0.0, TAU, 180, Color(0.32, 0.38, 0.5, 1.0), 2.5, true)
+
+	# Chevrons moving clockwise, tinted toward the next station's color.
+	var n := 60
 	for k in n:
-		var a := TAU * float(k) / float(n)
-		var p0 := center + Vector2(cos(a), sin(a)) * (radius - 9.0)
-		var p1 := center + Vector2(cos(a), sin(a)) * (radius - 3.0)
-		draw_line(p0, p1, Color(0.45, 0.55, 0.7, 0.55), 2.0, true)
+		var a := TAU * float(k) / float(n) + _belt_offset
+		var rel := fposmod(a - base_angle(0), TAU) / step
+		var i := int(rel)
+		var f := rel - float(i)
+		var col := Pipeline.color_of(i).lerp(Pipeline.color_of(i + 1), f)
+		col.a = 0.55
+		var dir := Vector2(-sin(a), cos(a))      # tangent (clockwise)
+		var nrm := Vector2(cos(a), sin(a))       # outward normal
+		var p := center + nrm * radius
+		var tip := p + dir * 3.5
+		draw_polyline(PackedVector2Array([
+			p - dir * 3.0 + nrm * 6.0, tip, p - dir * 3.0 - nrm * 6.0,
+		]), col, 2.5, true)
