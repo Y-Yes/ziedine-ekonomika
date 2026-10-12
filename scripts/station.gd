@@ -17,12 +17,12 @@ const BASE_RATE := 0.55   # tokens / second at level 1
 const SPEED_STEP := 0.5   # +50 % of base rate per speed level
 const BASE_CAP := 3       # buffer slots at level 1
 const CAP_STEP := 2       # extra slots per capacity level
-const VALUE_STEP := 1.0   # extra € added value per value level
+const VALUE_STEP := 0.5   # extra € added value per value level
 const MAX_LEVEL := 10
 
 # Upgrade prices (€) at level 1 and their growth per level (tycoon-style).
-const COST_BASE := {"speed": 12.0, "cap": 8.0, "value": 20.0}
-const COST_GROWTH := {"speed": 1.6, "cap": 1.5, "value": 1.75}
+const COST_BASE := {"speed": 14.0, "cap": 10.0, "value": 25.0}
+const COST_GROWTH := {"speed": 1.95, "cap": 1.8, "value": 2.1}
 
 var index: int = 0
 var speed_level: int = 1
@@ -85,6 +85,18 @@ func recompute() -> void:
 func rate_at(level: int) -> float:
 	return BASE_RATE * (1.0 + SPEED_STEP * float(level - 1))
 
+## Economies of scale: a well-stocked storage lets the station work in
+## batches – +6 % speed per storage level while it is at least half full.
+const SCALE_BONUS := 0.06
+
+func scale_active() -> bool:
+	return cap_level > 1 and buffer.size() * 2 >= capacity
+
+func effective_rate() -> float:
+	if scale_active():
+		return process_rate * (1.0 + SCALE_BONUS * float(cap_level - 1))
+	return process_rate
+
 func cap_at(level: int) -> int:
 	return BASE_CAP + (level - 1) * CAP_STEP
 
@@ -119,11 +131,14 @@ func preview(kind: String) -> String:
 			var m := speed_mult * perk_speed
 			return "Greitis: %.2f → %.2f vnt./s" % [rate_at(l) * m, rate_at(l + 1) * m]
 		"cap":
-			return "Sandėlis: %d → %d vietos" % [cap_at(l) + cap_bonus, cap_at(l + 1) + cap_bonus]
+			return "Vietos %d → %d, masto ekonomija +%d %%" % [cap_at(l) + cap_bonus, cap_at(l + 1) + cap_bonus, int(SCALE_BONUS * 100.0 * float(l))]
 		_:
 			if index == 0:
-				return "Už grąžintą daiktą: €%d → €%d" % [int(value_at(l)), int(value_at(l + 1))]
-			return "Pridėtinė vertė: +€%d → +€%d" % [int(value_at(l)), int(value_at(l + 1))]
+				return "Už grąžintą daiktą: €%s → €%s" % [_eur(value_at(l)), _eur(value_at(l + 1))]
+			return "Pridėtinė vertė: +€%s → +€%s" % [_eur(value_at(l)), _eur(value_at(l + 1))]
+
+static func _eur(v: float) -> String:
+	return str(int(v)) if absf(v - round(v)) < 0.01 else "%.1f" % v
 
 func upgrade(kind: String) -> void:
 	match kind:
@@ -168,8 +183,10 @@ func clear_buffer() -> void:
 	_timer = 0.0
 	queue_redraw()
 
-## Player clicked the station: process one waiting item right now.
-## If the station is on fire, each click puts the fire out a bit instead.
+const CLICK_WORK := 0.35   # one click = 35 % of an item's processing
+
+## Player clicked the station: manual work pushes the current item forward
+## (several clicks finish it). If the station is on fire, clicks put it out.
 func manual_process() -> bool:
 	punch = 1.0
 	if fire > 0.0:
@@ -177,7 +194,11 @@ func manual_process() -> bool:
 		return true
 	if buffer.is_empty():
 		return false
-	_release_one()
+	var interval := 1.0 / maxf(effective_rate(), 0.001)
+	_timer += interval * CLICK_WORK
+	if _timer >= interval:
+		_timer -= interval
+		_release_one()
 	return true
 
 func _process(real_delta: float) -> void:
@@ -204,7 +225,7 @@ func _process(real_delta: float) -> void:
 		_timer = 0.0
 		return
 
-	var interval := 1.0 / maxf(process_rate, 0.001)
+	var interval := 1.0 / maxf(effective_rate(), 0.001)
 	_timer += delta
 	while _timer >= interval and not buffer.is_empty():
 		_timer -= interval
@@ -244,7 +265,7 @@ func _draw() -> void:
 	draw_arc(Vector2.ZERO, r, 0.0, TAU, 48,
 		accent if not busy else accent.darkened(0.35), 4.0, true)
 	if busy:
-		var frac := clampf(_timer * process_rate, 0.0, 1.0)
+		var frac := clampf(_timer * effective_rate(), 0.0, 1.0)
 		if frac > 0.01:
 			draw_arc(Vector2.ZERO, r, -PI * 0.5, -PI * 0.5 + TAU * frac, 48,
 				accent.lightened(0.25), 5.0, true)

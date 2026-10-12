@@ -30,28 +30,27 @@ func setup(g: Node, h: Node, f: Font, fb: Font) -> void:
 	hud = h
 	font = f
 	bold = fb
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var c: Vector2 = game.center
 	_steps = [
 		{"title": "Sveikas, direktoriau!",
 			"text": "Tai tavo įmonių ratas. Daiktai keliauja per 6 stotis, o kiekviena prideda produktui vertės. Parduotuvėje jis parduodamas, o naudotojas vėl grąžina jį į ratą.",
-			"target": func(): return c, "r": 120.0, "wait": ""},
+			"target": func(): return game.center, "r": 120.0, "wait": ""},
 		{"title": "Rankinis darbas",
 			"text": "Kai stotyje laukia daiktų, SPAUSK ją – darbuotojai iškart apdoros vieną. Pabandyk su Surinkimu!",
 			"target": func(): return game.stations[1].position, "r": 52.0, "wait": "work"},
 		{"title": "Investuok",
 			"text": "Dešinėje atsidarė stoties patobulinimai. Nupirk vieną – pvz., greitį. Žalia rodyklė lentelėje rodo, kur gali ką nors nusipirkti.",
-			"target": func(): return Vector2(c.x + 400.0, 230.0), "r": 90.0, "wait": "upgrade"},
+			"target": func(): return Vector2(get_viewport_rect().size.x - 175.0, 250.0), "r": 90.0, "wait": "upgrade"},
 		{"title": "Investuotojai",
 			"text": "Kartais pasirodo auksinės monetos – investuotojų pinigai. Spėk pagauti, kol neišnyko!",
 			"target": func(): return game.tutorial_bonus_pos(), "r": 40.0, "wait": "bonus"},
 		{"title": "Tarša",
 			"text": "Ko nespėsi apdoroti – keliaus į sąvartyną. Tarša mažina kainas, sukelia gaisrus ir potvynius, o planeta pradeda degti.",
-			"target": func(): return Vector2(c.x + 445.0, 38.0), "r": 60.0, "wait": ""},
+			"target": func(): return Vector2(get_viewport_rect().size.x - 150.0, 38.0), "r": 60.0, "wait": ""},
 		{"title": "10 metų",
 			"text": "Kas minutę – metų ataskaita, ES tikslas ir naujos investicijos. Kartais Rūšiavime pasirodys mišrių atliekų – išrūšiuok jas! Sėkmės!",
-			"target": func(): return Vector2(c.x + 445.0, 74.0), "r": 50.0, "wait": ""},
+			"target": func(): return Vector2(get_viewport_rect().size.x - 150.0, 74.0), "r": 50.0, "wait": ""},
 	]
 	_build()
 	_go(0)

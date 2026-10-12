@@ -93,9 +93,13 @@ def build(out):
     S = {}
     S["click"] = mix(tone(1800, 0.04, "sine", 0.5, curve=14), noise(0.02, 0.15, 20))
     S["work"] = mix(tone(220, 0.12, "sine", 0.7, curve=10, sweep=120), noise(0.05, 0.2, 18, lp=0.2))
-    S["coin"] = mix(bell(note(83), 0.12, 0.5), bell(note(88), 0.35, 0.5), offsets=[0, 0.07])
-    S["sale"] = mix(noise(0.06, 0.35, 14), bell(note(84), 0.25, 0.45), bell(note(91), 0.45, 0.4),
-                    offsets=[0, 0.02, 0.09])
+    # soft marimba-like pluck (gentle, low, short)
+    S["coin"] = mix(tone(note(76), 0.22, "sine", 0.5, a=0.004, curve=11),
+                    tone(note(76) * 4.0, 0.06, "sine", 0.06, a=0.002, curve=20),
+                    tone(note(88), 0.18, "sine", 0.12, a=0.004, curve=12))
+    # warm two-note chime
+    S["sale"] = mix(tone(note(72), 0.45, "sine", 0.4, a=0.01, curve=6), tone(note(79), 0.55, "sine", 0.35, a=0.01, curve=6),
+                    tone(note(84), 0.5, "tri", 0.08, a=0.02, curve=6), offsets=[0, 0.08, 0.08])
     S["upgrade"] = mix(*[bell(note(n), 0.35, 0.4) for n in (72, 76, 79, 84)], tone(note(96), 0.5, "sine", 0.12, curve=5),
                        offsets=[0, 0.06, 0.12, 0.18, 0.2])
     S["error"] = mix(tone(110, 0.18, "square", 0.35, curve=4), tone(104, 0.18, "square", 0.3, curve=4), offsets=[0, 0.0])

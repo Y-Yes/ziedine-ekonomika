@@ -52,6 +52,9 @@ var _fly_from: Vector2
 var _fly_to: Vector2
 var _fly_ok: bool = false
 var _shake: float = 0.0
+var _drag_target := Vector2.ZERO
+var _tilt: float = 0.0
+var _rot: float = 0.0
 
 var _bin_open: Array[float] = [0.0, 0.0, 0.0]
 var _bin_flash: Array[float] = [0.0, 0.0, 0.0]
@@ -69,7 +72,7 @@ func open(g: Node, count: int, f: Font, fb: Font) -> void:
 	bold = fb
 	_items_tex = load(ITEMS_TEX) if ResourceLoader.exists(ITEMS_TEX) else null
 	_bins_tex = load(BINS_TEX) if ResourceLoader.exists(BINS_TEX) else null
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var vp := get_viewport_rect().size
 	_panel = Rect2(vp.x * 0.5 - 320.0, 70.0, 640.0, 548.0)
@@ -152,9 +155,10 @@ func _gui_input(ev: InputEvent) -> void:
 		return
 	if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT:
 		if ev.pressed:
-			if _cur >= 0 and _fly < 0.0 and ev.position.distance_to(_pos) < 56.0:
+			if _cur >= 0 and _fly < 0.0 and ev.position.distance_to(_pos) < 75.0:
 				_drag = true
-				_drag_off = _pos - ev.position
+				_drag_off = (_pos - ev.position) * 0.5
+				_drag_target = _pos
 				Sfx.play("click")
 			else:
 				var b := _bin_at(ev.position)
@@ -162,7 +166,7 @@ func _gui_input(ev: InputEvent) -> void:
 					_drop_into(b)
 		else:
 			if _drag:
-				var b2 := _bin_at(_pos)
+				var b2 := _bin_at(_drag_target)
 				if b2 >= 0:
 					_drop_into(b2)
 				else:
@@ -171,8 +175,9 @@ func _gui_input(ev: InputEvent) -> void:
 	elif ev is InputEventMouseMotion:
 		_hover_bin = _bin_at(ev.position)
 		if _drag:
-			_pos = ev.position + _drag_off
-			_hover_bin = _bin_at(_pos)
+			_drag_target = ev.position + _drag_off
+			_tilt = clampf(ev.relative.x * 0.03, -0.5, 0.5)
+			_hover_bin = _bin_at(_drag_target)
 		accept_event()
 
 func _input(ev: InputEvent) -> void:
@@ -211,6 +216,12 @@ func _process(delta: float) -> void:
 		Sfx.play("sort_bad", 0.0)
 		_finish()
 	_appear = minf(1.0, _appear + delta * 4.0)
+	if _drag and _fly < 0.0:
+		_pos = _pos.lerp(_drag_target, minf(1.0, delta * 22.0))
+	elif _fly < 0.0 and _cur >= 0:
+		_pos = _pos.lerp(_home, minf(1.0, delta * 10.0))
+	_rot = lerpf(_rot, _tilt if _drag else 0.0, minf(1.0, delta * 10.0))
+	_tilt = lerpf(_tilt, 0.0, minf(1.0, delta * 6.0))
 	if _fly >= 0.0:
 		_fly += delta * 3.5
 		var u := minf(_fly, 1.0)
@@ -288,8 +299,14 @@ func _draw() -> void:
 		var sz := 104.0 * k
 		if not _drag and _fly < 0.0:
 			draw_circle(_pos + Vector2(0, 52), 34.0, Color(0, 0, 0, 0.25))
-		draw_texture_rect_region(_items_tex, Rect2(_pos - Vector2(sz, sz) * 0.5, Vector2(sz, sz)),
+		draw_set_transform(_pos, _rot, Vector2.ONE)
+		draw_texture_rect_region(_items_tex, Rect2(-Vector2(sz, sz) * 0.5, Vector2(sz, sz)),
 			Rect2(iw * _cur, 0, iw, float(_items_tex.get_height())))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		if not _drag and _fly < 0.0 and _correct + (_total - _correct) == _total and _t < 6.0 and _total - _queue.size() == 1:
+			var hy := 30.0 + 12.0 * sin(_t * 5.0)
+			_text(f, "Tempk mane žemyn!", _pos + Vector2(0, -70.0 - 0.0 * hy), 14, Color(1.0, 0.9, 0.5, 0.9))
+			draw_colored_polygon(PackedVector2Array([_pos + Vector2(70, hy - 10), _pos + Vector2(82, hy - 10), _pos + Vector2(76, hy + 4)]), Color(1.0, 0.9, 0.5, 0.9))
 		if _fly < 0.0:
 			_text(fb, ITEMS[_cur]["name"], _pos + Vector2(0, 74.0), 17, Color(0.95, 0.97, 1.0))
 

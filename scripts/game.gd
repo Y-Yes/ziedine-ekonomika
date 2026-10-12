@@ -195,6 +195,34 @@ func _ready() -> void:
 	hud.show_start_overlay()
 	sfx.start_music()
 
+	get_viewport().size_changed.connect(_relayout)
+	if bool(Settings.get_value("fullscreen", false)):
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	_relayout()
+	hud.refresh_fullscreen()
+
+## Keep the ring centred and the HUD glued to the screen edges for any
+## window size / aspect ratio.
+func _relayout() -> void:
+	var vp := get_viewport_rect().size
+	center = Vector2(vp.x * 0.5, vp.y * 0.5 + 14.0)
+	ring.center = center
+	ring.queue_redraw()
+	for i in stations.size():
+		stations[i].position = ring.station_position(i)
+	for t in tokens:
+		if is_instance_valid(t) and t.active:
+			t.position = ring.position_for_angle(t.angle)
+	landfill.position = Vector2(center.x + 165.0, vp.y - 34.0)
+	hud.relayout(vp)
+
+func toggle_fullscreen() -> void:
+	var fs := DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if fs else DisplayServer.WINDOW_MODE_FULLSCREEN)
+	Settings.set_value("fullscreen", not fs)
+	Sfx.play("click")
+	hud.refresh_fullscreen()
+
 ## Full-screen background picture behind everything (art/fonas.png).
 func _add_background() -> void:
 	if not ResourceLoader.exists("res://art/fonas.png"):

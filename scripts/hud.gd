@@ -36,6 +36,11 @@ var circ_label: Label
 var loops_label: Label
 var status_label: Label
 var mute_btn: Button
+var fs_btn: Button
+var sound_panel: PanelContainer
+var music_slider: HSlider
+var sfx_slider: HSlider
+var mute_check: CheckBox
 
 var pol_label: Label
 var pol_fill: ColorRect
@@ -83,6 +88,7 @@ var final_title: Label
 var final_text: Label
 var final_tiles: Array[Label] = []
 var final_score_label: Label
+var final_sub: Label
 var diff_btns: Array[Button] = []
 var tut_check: CheckBox
 var best_label: Label
@@ -206,17 +212,129 @@ func _build_bars() -> void:
 	mute_btn.size = Vector2(150, 26)
 	mute_btn.add_theme_font_size_override("font_size", 12)
 	_button_styles(mute_btn, Color(0.5, 0.55, 0.7))
-	mute_btn.pressed.connect(_toggle_mute)
+	mute_btn.pressed.connect(_toggle_sound_panel)
 	_root.add_child(mute_btn)
+	fs_btn = Button.new()
+	fs_btn.size = Vector2(150, 26)
+	fs_btn.add_theme_font_size_override("font_size", 12)
+	_button_styles(fs_btn, Color(0.5, 0.55, 0.7))
+	fs_btn.pressed.connect(func(): game.toggle_fullscreen())
+	_root.add_child(fs_btn)
+	refresh_fullscreen()
+	_build_sound_panel()
 
 func _toggle_mute() -> void:
 	if Sfx.inst != null:
 		Sfx.inst.set_muted(not Sfx.inst.muted)
 	_refresh_mute()
 
+func _build_sound_panel() -> void:
+	sound_panel = PanelContainer.new()
+	sound_panel.add_theme_stylebox_override("panel", _style(Color(0.08, 0.1, 0.15, 0.98), Color(0.5, 0.55, 0.7), 10))
+	sound_panel.custom_minimum_size = Vector2(250, 0)
+	sound_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	sound_panel.visible = false
+	_root.add_child(sound_panel)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	sound_panel.add_child(vb)
+	var t := Label.new()
+	t.text = "Garso nustatymai"
+	t.add_theme_font_override("font", bold)
+	t.add_theme_font_size_override("font_size", 15)
+	vb.add_child(t)
+	music_slider = _slider_row(vb, "Muzika")
+	sfx_slider = _slider_row(vb, "Efektai")
+	mute_check = CheckBox.new()
+	mute_check.text = "Išjungti visą garsą (M)"
+	mute_check.focus_mode = Control.FOCUS_NONE
+	mute_check.add_theme_font_size_override("font_size", 13)
+	mute_check.toggled.connect(func(on: bool):
+		if Sfx.inst != null and Sfx.inst.muted != on:
+			Sfx.inst.set_muted(on)
+		_refresh_mute())
+	vb.add_child(mute_check)
+	if Sfx.inst != null:
+		music_slider.set_value_no_signal(Sfx.inst.music_vol * 100.0)
+		sfx_slider.set_value_no_signal(Sfx.inst.sfx_vol * 100.0)
+	music_slider.value_changed.connect(func(v: float):
+		if Sfx.inst != null:
+			Sfx.inst.set_music_volume(v / 100.0)
+		_refresh_mute())
+	sfx_slider.value_changed.connect(func(v: float):
+		if Sfx.inst != null:
+			Sfx.inst.set_sfx_volume(v / 100.0)
+			Sfx.play("coin", 0.0)
+		_refresh_mute())
+
+func _slider_row(parent: Control, title: String) -> HSlider:
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 8)
+	parent.add_child(hb)
+	var l := Label.new()
+	l.text = title
+	l.custom_minimum_size = Vector2(62, 0)
+	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_color_override("font_color", Color(0.78, 0.85, 0.95))
+	hb.add_child(l)
+	var sl := HSlider.new()
+	sl.min_value = 0
+	sl.max_value = 100
+	sl.step = 1
+	sl.custom_minimum_size = Vector2(130, 24)
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sl.focus_mode = Control.FOCUS_NONE
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(0.2, 0.23, 0.3)
+	track.set_corner_radius_all(4)
+	track.content_margin_top = 3
+	track.content_margin_bottom = 3
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.45, 0.8, 0.55)
+	fill.set_corner_radius_all(4)
+	fill.content_margin_top = 3
+	fill.content_margin_bottom = 3
+	sl.add_theme_stylebox_override("slider", track)
+	sl.add_theme_stylebox_override("grabber_area", fill)
+	sl.add_theme_stylebox_override("grabber_area_highlight", fill)
+	hb.add_child(sl)
+	return sl
+
+func _toggle_sound_panel() -> void:
+	Sfx.play("click")
+	sound_panel.visible = not sound_panel.visible
+	sound_panel.position = Vector2(mute_btn.position.x + mute_btn.size.x - 250.0, mute_btn.position.y + 32.0)
+
+func refresh_fullscreen() -> void:
+	var fs := DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]
+	fs_btn.text = "Langas (F11)" if fs else "Pilnas ekranas (F11)"
+
+## Re-anchor everything to the current screen size (any aspect ratio).
+func relayout(vp: Vector2) -> void:
+	if pol_label == null:
+		return
+	var x := vp.x - 20.0 - BAR_W
+	pol_label.position.x = x
+	(pol_fill.get_parent() as Control).position.x = x
+	year_label.position.x = x
+	(year_fill.get_parent() as Control).position.x = x
+	mute_btn.position = Vector2(vp.x - 20.0 - 150.0, 84)
+	if sound_panel != null:
+		sound_panel.position = Vector2(mute_btn.position.x + mute_btn.size.x - 250.0, mute_btn.position.y + 32.0)
+	fs_btn.position = Vector2(vp.x - 20.0 - 150.0 - 8.0 - 150.0, 84)
+	event_panel.position.x = vp.x * 0.5 - 210.0
+	alert_panel.position = Vector2(vp.x * 0.5 - 170.0, vp.y * 0.5 - 34.0)
+	panel.position.x = vp.x - 330.0
+	clean_btn.position = Vector2(vp.x - 330.0, vp.y - 136.0)
+	raw_btn.position = Vector2(vp.x - 330.0, vp.y - 74.0)
+	table.position = Vector2(14.0, vp.y - table.size.y - 12.0)
+
 func _refresh_mute() -> void:
 	var m := Sfx.inst != null and Sfx.inst.muted
-	mute_btn.text = "Garsas išjungtas (M)" if m else "Garsas įjungtas (M)"
+	mute_btn.text = "Garsas: išjungtas" if m else "Garsas: %d %%" % int(Sfx.inst.sfx_vol * 100.0 if Sfx.inst != null else 0)
+	if mute_check != null:
+		mute_check.set_pressed_no_signal(m)
 
 func _build_event_banner() -> void:
 	event_panel = PanelContainer.new()
@@ -501,7 +619,7 @@ func _build_overlay() -> void:
 	st.text = "Valdyk žiedinės ekonomikos įmonių grandinę 10 metų – uždirbk ir neleisk planetai užsidegti"
 	var how := _center_label(start_box, 14, Color(0.75, 0.82, 0.92))
 	how.text = ("Spausk stotis – rankinis darbas  •  Pirk patobulinimus  •  Gaudyk € monetas  •  Rūšiuok atliekas\n"
-		+ "Tarpas – nauja žaliava  •  V – valymas  •  Esc – pauzė  •  M – garsas")
+		+ "Tarpas – nauja žaliava  •  V – valymas  •  Esc – pauzė  •  M – garsas  •  F11 – pilnas ekranas")
 	var sp := Control.new()
 	sp.custom_minimum_size = Vector2(0, 6)
 	start_box.add_child(sp)
@@ -548,8 +666,7 @@ func _build_overlay() -> void:
 	final_box.add_theme_constant_override("separation", 14)
 	final_box.visible = false
 	holder.add_child(final_box)
-	var fsub := _center_label(final_box, 16, Color(0.65, 0.9, 0.7))
-	fsub.text = "10 metų baigėsi! Tavo įmonės titulas:"
+	final_sub = _center_label(final_box, 16, Color(0.65, 0.9, 0.7))
 	final_title = _center_label(final_box, 40, Color(1.0, 0.88, 0.45))
 	final_title.add_theme_font_override("font", bold)
 	var ftiles := HBoxContainer.new()
@@ -662,6 +779,7 @@ func show_final(s: Dictionary) -> void:
 	start_box.visible = false
 	final_box.visible = true
 	final_title.text = game.final_title()
+	final_sub.text = "ŽAIDIMAS BAIGTAS" if bool(s.get("lost", false)) else "10 metų baigėsi! Tavo įmonės titulas:"
 	var score: int = game.final_score()
 	var best := int(Settings.get_value("best_score", 0))
 	final_tiles[0].text = "€%d" % int(game.total_earned)
@@ -676,6 +794,15 @@ func show_final(s: Dictionary) -> void:
 	else:
 		final_score_label.text = "%d taškų   (rekordas: %d)" % [score, best]
 		final_score_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	if bool(s.get("lost", false)):
+		final_title.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4))
+		var why := "Tarša per ilgai laikėsi 100 % – ekosistema žlugo." if game.lost_reason == "planet" \
+			else "Skolos viršijo €%d – bankas uždarė įmonę." % int(-game.BANKRUPT_AT)
+		final_text.text = ("Žlugai %d-aisiais metais.  %s\n"
+			+ "Pralaimėjus taškai dalinami per pusę. Sunkumas: %s.") % [
+			game.year, why, game.DIFFICULTIES[game.difficulty]["title"]]
+		return
+	final_title.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
 	var goal := "pasiektas" if bool(s["met"]) else "nepasiektas"
 	final_text.text = ("Sunkumas: %s.  Paskutinių metų ES tikslas %s.\n"
 		+ "Taškai = pinigai + planetos būklė + žiedinumas. Turtas ant užterštos planetos vertas mažiau.") % [
@@ -744,7 +871,7 @@ func money_target() -> Vector2:
 
 func bump_money() -> void:
 	_money_bump = 1.0
-	Sfx.play("coin", 0.08)
+	Sfx.play("coin", 0.04)
 
 # --- Callbacks -------------------------------------------------------------
 
@@ -768,8 +895,12 @@ func _process(delta: float) -> void:
 		money_label.scale = Vector2(k, k)
 
 func _input(ev: InputEvent) -> void:
-	if ev is InputEventKey and ev.pressed and not ev.echo and ev.keycode == KEY_M:
-		_toggle_mute()
+	if ev is InputEventKey and ev.pressed and not ev.echo:
+		if ev.keycode == KEY_M:
+			_toggle_mute()
+		elif ev.keycode == KEY_F11 or (ev.keycode == KEY_ENTER and ev.alt_pressed):
+			game.toggle_fullscreen()
+			get_viewport().set_input_as_handled()
 
 func refresh() -> void:
 	if game == null:
@@ -778,7 +909,12 @@ func refresh() -> void:
 	money_label.text = "€ %d" % int(floor(game.money))
 	money_label.add_theme_color_override("font_color",
 		Color(1.0, 0.88, 0.45) if game.money >= 0.0 else Color(1.0, 0.45, 0.4))
-	income_label.text = "Pajamos: €%d / min" % int(game.income_per_min())
+	if game.money < 0.0:
+		income_label.text = "SKOLOS! Bankrotas ties -€%d" % int(-game.BANKRUPT_AT)
+		income_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.45))
+	else:
+		income_label.text = "Pajamos: €%d / min" % int(game.income_per_min())
+		income_label.add_theme_color_override("font_color", Color(0.75, 0.85, 0.7))
 	circ_label.text = "Žiedinumas: %d %%" % int(game.circularity())
 	loops_label.text = "Užbaigti ciklai: %d" % game.loops
 
