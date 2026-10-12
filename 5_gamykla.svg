@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+<defs><linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6cd0ff"/><stop offset="1" stop-color="#2a96d6"/></linearGradient><linearGradient id="roof" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3aa6e6"/><stop offset="1" stop-color="#1d78b8"/></linearGradient><linearGradient id="chim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a8cc8"/><stop offset="1" stop-color="#1a5f8e"/></linearGradient><linearGradient id="gear" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cfe3f2"/></linearGradient><linearGradient id="glow" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6b8"/><stop offset="1" stop-color="#ffd84a"/></linearGradient></defs>
+<ellipse cx="128" cy="226" rx="96" ry="9" fill="#000" opacity=".18"/>
+<circle cx="196" cy="40" r="13" fill="#e3e9f0" opacity=".9"/>
+<circle cx="212" cy="24" r="17" fill="#e3e9f0" opacity=".65"/>
+<circle cx="186" cy="58" r="9" fill="#e3e9f0"/>
+<rect x="166" y="60" width="28" height="80" fill="url(#chim)"/>
+<rect x="162" y="56" width="36" height="10" rx="3" fill="#174f78"/>
+<rect x="166" y="80" width="28" height="6" fill="#fff" opacity=".35"/>
+<path d="M30 140 V104 L72 140 V104 L114 140 V104 L156 140 Z" fill="url(#roof)"/>
+<rect x="30" y="136" width="196" height="88" rx="4" fill="url(#wall)"/>
+<rect x="30" y="136" width="196" height="8" fill="#fff" opacity=".2"/>
+<rect x="46" y="156" width="30" height="26" rx="4" fill="url(#glow)"/>
+<rect x="180" y="156" width="30" height="26" rx="4" fill="url(#glow)"/>
+<path d="M61 156 V182 M195 156 V182" stroke="#2a96d6" stroke-width="3"/>
+<rect x="44" y="196" width="34" height="28" rx="3" fill="#1d78b8"/>
+<rect x="178" y="196" width="34" height="28" rx="3" fill="#1d78b8"/>
+<polygon points="153.3,170.2 162.7,171.7 162.7,180.3 153.3,181.8 151.9,186.2 158.6,193.0 153.6,199.9 145.1,195.6 141.4,198.3 142.8,207.7 134.7,210.4 130.3,201.9 125.7,201.9 121.3,210.4 113.2,207.7 114.6,198.3 110.9,195.6 102.4,199.9 97.4,193.0 104.1,186.2 102.7,181.8 93.3,180.3 93.3,171.7 102.7,170.2 104.1,165.8 97.4,159.0 102.4,152.1 110.9,156.4 114.6,153.7 113.2,144.3 121.3,141.6 125.7,150.1 130.3,150.1 134.7,141.6 142.8,144.3 141.4,153.7 145.1,156.4 153.6,152.1 158.6,159.0 151.9,165.8" fill="url(#gear)" stroke="#9cc3e0" stroke-width="1.5"/><circle cx="128" cy="176" r="11" fill="#2a96d6"/><circle cx="128" cy="176" r="5" fill="#cfe3f2"/>
+</svg>
