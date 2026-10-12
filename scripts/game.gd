@@ -19,9 +19,10 @@ const YEAR_LEN := 60.0       # seconds per in-game year
 const YEARS := 10
 
 # Pollution (0..100)
-const POL_OVERFLOW := 4.0       # item falls out of the loop -> landfill
-const POL_RAW := 1.5            # extracting new primary raw material
-const POL_DECAY := 0.2          # nature recovers per second
+const POL_OVERFLOW := 6.0       # item falls out of the loop -> landfill
+const POL_RAW := 2.5            # extracting new primary raw material
+const POL_DECAY := 0.1          # nature recovers per second
+const POL_PER_ITEM := 0.15      # every newly consumed product has a footprint
 const POL_LOOP_CLEAN := 0.3     # each completed loop reduces pollution
 const POL_PRICE_HIT := 0.4      # at 100 % pollution prices drop by 40 %
 const CLEANUP_AMOUNT := 12.0
@@ -36,8 +37,8 @@ const SORTER := 2
 
 # Consumption ramp (over the whole game)
 const SPAWN_START_INTERVAL := 2.1
-const SPAWN_MIN_INTERVAL := 0.6
-const RAMP_TIME := 360.0
+const SPAWN_MIN_INTERVAL := 0.15
+const DEMAND_GROWTH := 1.3      # demand multiplier per year (economic growth)
 
 # Investor bonus coins
 const BONUS_MIN_DELAY := 8.0
@@ -48,6 +49,10 @@ const SORT_MIN_DELAY := 35.0
 const SORT_MAX_DELAY := 55.0
 const SORT_WAIT := 12.0          # seconds the mixed waste waits before it is dumped
 const SORT_SLOWMO := 0.25
+
+# Losing
+const CATASTROPHE_TIME := 15.0   # seconds at 100 % pollution -> planet lost
+const BANKRUPT_AT := -150.0      # debt limit -> bankruptcy
 
 const DIFFICULTIES := [
 	{"title": "Lengvas", "desc": "Mažiau atliekų, daugiau pinigų,\nnelaimės retesnės",
@@ -157,6 +162,8 @@ var fine_mult: float = 1.0
 var _income_log: Array = []
 var _shake: float = 0.0
 var _tut_bonus: Bonus = null
+var catastrophe: float = 0.0
+var lost_reason: String = ""
 
 func _ready() -> void:
 	randomize()
@@ -291,6 +298,8 @@ func start_game(diff_index: int = -1, with_tutorial: bool = false) -> void:
 	_end_event()
 	_income_log.clear()
 	selected_index = -1
+	catastrophe = 0.0
+	lost_reason = ""
 	finished = false
 	in_report = false
 	paused = false
@@ -410,12 +419,42 @@ func _finish_game(summary: Dictionary) -> void:
 	hud.hide_report()
 	hud.show_final(summary)
 
+## Losing conditions: long ecological catastrophe or bankruptcy.
+func _check_lose(delta: float) -> void:
+	if tutorial_active:
+		return
+	if pollution >= 99.5:
+		if catastrophe == 0.0:
+			Sfx.play("fire", 0.0, 0.8)
+		catastrophe += delta
+		hud.show_alert("EKOLOGINĖ KATASTROFA!", "Planeta žus po %d s – mažink taršą!" % int(ceil(CATASTROPHE_TIME - catastrophe)))
+		shake(0.15)
+		if catastrophe >= CATASTROPHE_TIME:
+			_lose("planet")
+			return
+	else:
+		catastrophe = maxf(0.0, catastrophe - delta * 2.0)
+	if money <= BANKRUPT_AT:
+		_lose("bankrupt")
+
+func _lose(reason: String) -> void:
+	lost_reason = reason
+	Sfx.play("flood", 0.0, 0.7)
+	shake(1.0)
+	_finish_game({"met": false, "lost": true})
+
 ## Final score combines money, planet health and circularity (× difficulty).
 func final_score() -> int:
+	if lost_reason != "":
+		return int(total_earned * 0.5 * float(diff["score"]))
 	var base := total_earned + (100.0 - pollution) * 15.0 + circularity() * 10.0
 	return int(base * float(diff["score"]))
 
 func final_title() -> String:
+	if lost_reason == "planet":
+		return "Planeta neatlaikė"
+	if lost_reason == "bankrupt":
+		return "Bankrotas"
 	var circ := circularity()
 	if pollution < 25.0 and circ >= 70.0:
 		return "Žiedinės ekonomikos lyderis"
@@ -551,13 +590,17 @@ func _process(real_delta: float) -> void:
 		_update_sorting(delta)
 	_update_fires(delta)
 	_move_tokens(delta)
+	_check_lose(delta)
+	if finished:
+		return
 	hud.refresh()
 	if year_time >= YEAR_LEN and not sorting_active:
 		_end_year()
 
+## Demand grows every year (economic growth): about +30 % per year.
 func _spawn_interval() -> float:
-	var t := clampf(elapsed / RAMP_TIME, 0.0, 1.0)
-	var iv := lerpf(SPAWN_START_INTERVAL, SPAWN_MIN_INTERVAL, t) * float(diff["spawn"]) / demand_mult
+	var growth := pow(DEMAND_GROWTH, elapsed / YEAR_LEN)
+	var iv := maxf(SPAWN_START_INTERVAL / growth, SPAWN_MIN_INTERVAL) * float(diff["spawn"]) / demand_mult
 	if tutorial_active:
 		iv *= 1.6
 	return iv
@@ -578,6 +621,8 @@ func _spawn_token() -> void:
 	t.position = ring.position_for_angle(t.angle)
 	add_child(t)
 	tokens.append(t)
+	if not tutorial_active:
+		add_pollution(POL_PER_ITEM)
 
 func _move_tokens(delta: float) -> void:
 	var arrived: Array[Token] = []
