@@ -67,6 +67,10 @@ var row_name: Array[Label] = []
 var row_desc: Array[Label] = []
 var row_btn: Array[Button] = []
 var panel_station: Station = null
+var _recommended: String = ""
+var _styled_for: Station = null
+var _rec_badge: Label
+var _blink_t: float = 0.0
 
 var raw_btn: Button
 var clean_btn: Button
@@ -80,6 +84,7 @@ var card_btns: Array[Button] = []
 var card_chip: Array[Label] = []
 var card_title: Array[Label] = []
 var card_desc: Array[Label] = []
+var card_icons: Array[AnimIcon] = []
 
 var overlay: ColorRect
 var start_box: VBoxContainer
@@ -155,6 +160,7 @@ func _build() -> void:
 	_build_alert()
 	_build_panel()
 	_build_buttons()
+	_build_rec_badge()
 	_build_report()
 	_build_overlay()
 
@@ -325,7 +331,7 @@ func relayout(vp: Vector2) -> void:
 	fs_btn.position = Vector2(vp.x - 20.0 - 150.0 - 8.0 - 150.0, 84)
 	event_panel.position.x = vp.x * 0.5 - 210.0
 	alert_panel.position = Vector2(vp.x * 0.5 - 170.0, vp.y * 0.5 - 34.0)
-	panel.position.x = vp.x - 330.0
+	panel.position.x = vp.x - 20.0 - maxf(310.0, panel.size.x)
 	clean_btn.position = Vector2(vp.x - 330.0, vp.y - 136.0)
 	raw_btn.position = Vector2(vp.x - 330.0, vp.y - 74.0)
 	table.position = Vector2(14.0, vp.y - table.size.y - 12.0)
@@ -412,6 +418,8 @@ func _build_panel() -> void:
 	panel = PanelContainer.new()
 	panel.position = Vector2(DESIGN_W - 330, 118)
 	panel.custom_minimum_size = Vector2(310, 0)
+	panel.size = Vector2(310, 0)
+	panel.clip_contents = true
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.visible = false
 	_root.add_child(panel)
@@ -442,10 +450,14 @@ func _build_panel() -> void:
 		row.add_child(texts)
 		var n := Label.new()
 		n.add_theme_font_size_override("font_size", 15)
+		n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		n.custom_minimum_size = Vector2(196, 0)
 		texts.add_child(n)
 		var d := Label.new()
 		d.add_theme_font_size_override("font_size", 12)
 		d.add_theme_color_override("font_color", Color(0.72, 0.8, 0.9))
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size = Vector2(196, 0)
 		texts.add_child(d)
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(78, 40)
@@ -453,10 +465,33 @@ func _build_panel() -> void:
 		b.add_theme_font_override("font", bold)
 		var kind: String = KINDS[i]
 		b.pressed.connect(func(): game.upgrade_selected(kind))
+		b.tooltip_text = Station.explain(kind)
+		row.tooltip_text = Station.explain(kind)
+		texts.tooltip_text = Station.explain(kind)
+		texts.mouse_filter = Control.MOUSE_FILTER_PASS
 		row.add_child(b)
 		row_name.append(n)
 		row_desc.append(d)
 		row_btn.append(b)
+
+func _build_rec_badge() -> void:
+	_rec_badge = Label.new()
+	_rec_badge.text = "APSIMOKA"
+	_rec_badge.add_theme_font_override("font", bold)
+	_rec_badge.add_theme_font_size_override("font_size", 11)
+	_rec_badge.add_theme_color_override("font_color", Color(0.08, 0.2, 0.1))
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.55, 1.0, 0.6)
+	sb.set_corner_radius_all(6)
+	sb.content_margin_left = 6
+	sb.content_margin_right = 6
+	sb.content_margin_top = 1
+	sb.content_margin_bottom = 1
+	_rec_badge.add_theme_stylebox_override("normal", sb)
+	_rec_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rec_badge.z_index = 5
+	_rec_badge.visible = false
+	_root.add_child(_rec_badge)
 
 func _build_buttons() -> void:
 	clean_btn = Button.new()
@@ -546,7 +581,7 @@ func _build_report() -> void:
 	vb.add_child(hb)
 	for i in 3:
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(210, 150)
+		b.custom_minimum_size = Vector2(210, 205)
 		b.focus_mode = Control.FOCUS_NONE
 		var idx := i
 		b.pressed.connect(func(): Sfx.play("card", 0.0); game.choose_card(idx))
@@ -569,6 +604,10 @@ func _build_report() -> void:
 		chip.add_theme_font_override("font", bold)
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cv.add_child(chip)
+		var ic := AnimIcon.new()
+		ic.custom_minimum_size = Vector2(64, 64)
+		ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		cv.add_child(ic)
 		var tl := Label.new()
 		tl.add_theme_font_size_override("font_size", 19)
 		tl.add_theme_font_override("font", bold)
@@ -589,6 +628,7 @@ func _build_report() -> void:
 		dl.custom_minimum_size = Vector2(186, 0)
 		dl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cv.add_child(dl)
+		card_icons.append(ic)
 		card_btns.append(b)
 		card_chip.append(chip)
 		card_title.append(tl)
@@ -732,7 +772,7 @@ func show_start_overlay() -> void:
 	final_box.visible = false
 	tut_check.button_pressed = not bool(Settings.get_value("tutorial_done", false))
 	var best := int(Settings.get_value("best_score", 0))
-	best_label.text = "Rekordas: %d taškų" % best if best > 0 else ""
+	best_label.text = "Tavo rekordas: %d" % best if best > 0 else ""
 	_refresh_mute()
 
 # --- Overlays / panels -------------------------------------------------------
@@ -764,6 +804,7 @@ func show_report(s: Dictionary, cards: Array) -> void:
 			card_chip[i].text = "● " + str(cat["label"])
 			card_chip[i].add_theme_color_override("font_color", c)
 			card_title[i].text = str(cards[i]["title"])
+			card_icons[i].set_sheet("res://art/kortos/%s.png" % str(cards[i]["id"]))
 			card_desc[i].text = str(cards[i]["desc"]).replace("\n", " ")
 		else:
 			card_btns[i].visible = false
@@ -789,23 +830,23 @@ func show_final(s: Dictionary) -> void:
 	final_tiles[4].text = "%d vnt." % game.landfilled
 	if score > best:
 		Settings.set_value("best_score", score)
-		final_score_label.text = "%d taškų  –  NAUJAS REKORDAS!" % score
+		final_score_label.text = "Rezultatas: %d  –  naujas rekordas!" % score
 		final_score_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
 	else:
-		final_score_label.text = "%d taškų   (rekordas: %d)" % [score, best]
+		final_score_label.text = "Rezultatas: %d   (rekordas: %d)" % [score, best]
 		final_score_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	if bool(s.get("lost", false)):
 		final_title.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4))
 		var why := "Tarša per ilgai laikėsi 100 % – ekosistema žlugo." if game.lost_reason == "planet" \
 			else "Skolos viršijo €%d – bankas uždarė įmonę." % int(-game.BANKRUPT_AT)
-		final_text.text = ("Žlugai %d-aisiais metais.  %s\n"
-			+ "Pralaimėjus taškai dalinami per pusę. Sunkumas: %s.") % [
+		final_text.text = ("Įmonė žlugo %d-aisiais metais. %s\n"
+			+ "Kadangi įmonė žlugo, rezultatas sumažintas perpus. Sunkumas: %s.") % [
 			game.year, why, game.DIFFICULTIES[game.difficulty]["title"]]
 		return
 	final_title.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
 	var goal := "pasiektas" if bool(s["met"]) else "nepasiektas"
 	final_text.text = ("Sunkumas: %s.  Paskutinių metų ES tikslas %s.\n"
-		+ "Taškai = pinigai + planetos būklė + žiedinumas. Turtas ant užterštos planetos vertas mažiau.") % [
+		+ "Rezultatą lemia uždirbti pinigai, planetos būklė ir žiedinumo rodiklis – turtas ant užterštos planetos vertas mažiau.") % [
 		game.DIFFICULTIES[game.difficulty]["title"], goal]
 
 func hide_overlay() -> void:
@@ -821,6 +862,8 @@ func show_panel(station: Station) -> void:
 	panel.add_theme_stylebox_override("panel", _style(Color(0.09, 0.11, 0.16, 0.96), accent.darkened(0.1), 12))
 	for b in row_btn:
 		_button_styles(b, accent)
+	_styled_for = null
+	_recommended = ""
 	refresh()
 
 func hide_panel() -> void:
@@ -881,6 +924,25 @@ func flash_overflow() -> void:
 # --- Per-frame refresh -----------------------------------------------------
 
 func _process(delta: float) -> void:
+	_blink_t += delta
+	if panel != null and panel.visible:
+		var any := false
+		for i in KINDS.size():
+			var on: bool = KINDS[i] == _recommended and not row_btn[i].disabled
+			var pulse := 0.5 + 0.5 * sin(_blink_t * 7.0)
+			var k := 1.0 + (0.35 * pulse if on else 0.0)
+			row_btn[i].self_modulate = Color(k, k, k, 1.0)
+			row_btn[i].pivot_offset = row_btn[i].size * 0.5
+			var sc := 1.0 + (0.08 * pulse if on else 0.0)
+			row_btn[i].scale = Vector2(sc, sc)
+			if on:
+				any = true
+				_rec_badge.visible = true
+				_rec_badge.global_position = row_btn[i].global_position + Vector2(row_btn[i].size.x * 0.5 - _rec_badge.size.x * 0.5, -14.0)
+		if not any:
+			_rec_badge.visible = false
+	elif _rec_badge != null:
+		_rec_badge.visible = false
 	if pol_flash > 0.0:
 		pol_flash = maxf(0.0, pol_flash - delta * 2.5)
 		_update_bars()
@@ -910,7 +972,7 @@ func refresh() -> void:
 	money_label.add_theme_color_override("font_color",
 		Color(1.0, 0.88, 0.45) if game.money >= 0.0 else Color(1.0, 0.45, 0.4))
 	if game.money < 0.0:
-		income_label.text = "SKOLOS! Bankrotas ties -€%d" % int(-game.BANKRUPT_AT)
+		income_label.text = "Skolos! Bankrotas, kai skola pasieks €%d" % int(-game.BANKRUPT_AT)
 		income_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.45))
 	else:
 		income_label.text = "Pajamos: €%d / min" % int(game.income_per_min())
@@ -921,10 +983,10 @@ func refresh() -> void:
 	_update_bars()
 
 	var rp: float = game.raw_price()
-	raw_btn.text = "Pirkti naują žaliavą – €%d   [Tarpas]\n(greita, bet +tarša, mažina žiedinumą)" % int(round(rp))
+	raw_btn.text = "Pirkti naują žaliavą – €%d   [Tarpas]\nGreita, bet teršia ir mažina žiedinumą" % int(round(rp))
 	raw_btn.disabled = game.money < rp or not game.running
 	var cp: float = game.cleanup_price()
-	clean_btn.text = "Valyti aplinką – €%d   [V]\n(-%d taršos, kaskart brangiau)" % [int(cp), int(game.CLEANUP_AMOUNT)]
+	clean_btn.text = "Valyti aplinką – €%d   [V]\nTarša -%d %%, kitas valymas bus brangesnis" % [int(cp), int(game.CLEANUP_AMOUNT)]
 	clean_btn.disabled = game.money < cp or not game.running or game.pollution < 1.0
 
 	_refresh_panel()
@@ -951,22 +1013,36 @@ func _update_bars() -> void:
 func _refresh_panel() -> void:
 	if not panel.visible or panel_station == null:
 		return
+	panel.position.x = get_viewport().get_visible_rect().size.x - 20.0 - maxf(310.0, panel.size.x)
+	panel_fact.visible = get_viewport().get_visible_rect().size.y >= 760.0
 	var st := panel_station
 	var accent := Pipeline.color_of(st.index)
 	panel_title.text = "%d. %s" % [st.index + 1, Pipeline.name_of(st.index)]
 	panel_title.add_theme_color_override("font_color", accent.lightened(0.15))
 	panel_fact.text = Pipeline.fact_of(st.index)
+	var rec: String = game.recommend(st)
+	if rec != _recommended or st != _styled_for:
+		_recommended = rec
+		_styled_for = st
+		for j in KINDS.size():
+			if KINDS[j] == _recommended:
+				_button_styles(row_btn[j], Color(0.3, 0.95, 0.45))
+				row_btn[j].add_theme_stylebox_override("normal", _style(Color(0.18, 0.62, 0.3), Color(0.75, 1.0, 0.8), 8, 3))
+				row_btn[j].add_theme_stylebox_override("hover", _style(Color(0.22, 0.72, 0.36), Color.WHITE, 8, 3))
+			else:
+				_button_styles(row_btn[j], Pipeline.color_of(st.index))
 	for i in KINDS.size():
 		var kind: String = KINDS[i]
 		var lvl := st.level_of(kind)
-		row_name[i].text = "%s  (L%d)" % [Pipeline.upgrade_name(st.index, kind), lvl]
-		row_name[i].add_theme_color_override("font_color", Color(0.95, 0.97, 1.0))
+		var best := kind == _recommended
+		row_name[i].text = Pipeline.upgrade_name(st.index, kind)
+		row_name[i].add_theme_color_override("font_color", Color(0.55, 1.0, 0.6) if best else Color(0.95, 0.97, 1.0))
 		if st.is_maxed(kind):
-			row_desc[i].text = "Maksimalus lygis"
+			row_desc[i].text = "Lygis %d/%d – maksimalus" % [lvl, Station.MAX_LEVEL]
 			row_btn[i].text = "MAX"
 			row_btn[i].disabled = true
 		else:
 			var cost := st.cost_of(kind)
-			row_desc[i].text = st.preview(kind)
+			row_desc[i].text = "Lygis %d → %d.  %s" % [lvl, lvl + 1, st.preview(kind)]
 			row_btn[i].text = "€%d" % cost
 			row_btn[i].disabled = game.money < cost

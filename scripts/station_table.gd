@@ -116,22 +116,28 @@ func _draw() -> void:
 		draw_string(f, Vector2(PAD + NAME_X - 6.0, cy + 5.0), Pipeline.name_of(i), HORIZONTAL_ALIGNMENT_LEFT, 84, 13,
 			accent.lightened(0.2))
 
-		# level bars
+		# level bars – the cheapest affordable upgrade of the station glows
+		var glow_kind: String = game.cheapest(st) if game.running else ""
 		for c in 3:
 			var lvl := st.level_of(KINDS[c])
 			var x0 := PAD + float(COL_X[c])
 			var pip_w := 3.4
 			var gap := 1.0
+			var glowing: bool = KINDS[c] == glow_kind
+			if glowing:
+				var pa := 0.35 + 0.35 * (0.5 + 0.5 * sin(_t * 6.0))
+				var gr := Rect2(x0 - 4.0, cy - 10.0, 10 * (pip_w + gap) + 18.0, 20.0)
+				var gs := StyleBoxFlat.new()
+				gs.bg_color = Color(0.35, 1.0, 0.45, pa * 0.35)
+				gs.border_color = Color(0.45, 1.0, 0.55, pa + 0.2)
+				gs.set_border_width_all(2)
+				gs.set_corner_radius_all(5)
+				draw_style_box(gs, gr)
 			for k in Station.MAX_LEVEL:
 				var r := Rect2(x0 + k * (pip_w + gap), cy - 6.0, pip_w, 12.0)
 				var col: Color = HEAD_COLORS[c] if k < lvl else Color(0.2, 0.23, 0.3)
+				if glowing and k == lvl:
+					col = Color(0.45, 1.0, 0.55, 0.5 + 0.5 * sin(_t * 6.0))
 				draw_rect(r, col)
 			draw_string(fb, Vector2(x0 + 10 * (pip_w + gap) + 3.0, cy + 4.0), str(lvl), HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
-				Color(0.85, 0.9, 1.0, 0.85))
-
-		# affordable upgrade marker (bouncing green arrow)
-		if game.running and _affordable(st):
-			var bx := size.x - PAD - 2.0
-			var by := cy + sin(_t * 6.0 + i) * 2.0
-			draw_colored_polygon(PackedVector2Array([
-				Vector2(bx - 6, by + 3), Vector2(bx, by - 5), Vector2(bx + 6, by + 3)]), Color(0.45, 1.0, 0.55))
+				Color(0.55, 1.0, 0.6) if glowing else Color(0.85, 0.9, 1.0, 0.85))

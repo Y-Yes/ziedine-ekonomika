@@ -24,6 +24,7 @@ var _skip_btn: Button
 var _t: float = 0.0
 var _target := Vector2.ZERO
 var _target_r := 50.0
+var _clicks: int = 0
 
 func setup(g: Node, h: Node, f: Font, fb: Font) -> void:
 	game = g
@@ -37,10 +38,10 @@ func setup(g: Node, h: Node, f: Font, fb: Font) -> void:
 			"text": "Tai tavo įmonių ratas. Daiktai keliauja per 6 stotis, o kiekviena prideda produktui vertės. Parduotuvėje jis parduodamas, o naudotojas vėl grąžina jį į ratą.",
 			"target": func(): return game.center, "r": 120.0, "wait": ""},
 		{"title": "Rankinis darbas",
-			"text": "Kai stotyje laukia daiktų, SPAUSK ją – darbuotojai iškart apdoros vieną. Pabandyk su Surinkimu!",
+			"text": "Kai stotyje laukia daiktai, spausk ją daug kartų – kiekvienas paspaudimas pagreitina darbą, o keli paspaudimai iškart apdoroja daiktą. Kuo greičiau spaudi, tuo daugiau pagamini! Pabandyk su Surinkimu – paspausk 3 kartus.",
 			"target": func(): return game.stations[1].position, "r": 52.0, "wait": "work"},
 		{"title": "Investuok",
-			"text": "Dešinėje atsidarė stoties patobulinimai. Nupirk vieną – pvz., greitį. Žalia rodyklė lentelėje rodo, kur gali ką nors nusipirkti.",
+			"text": "Dešinėje atsidarė stoties patobulinimai. Nupirk vieną – pvz., greitį. Lentelėje kairėje švytinti žalia juosta rodo, ką jau gali nusipirkti, o dešinėje mirksi tai, kas labiausiai apsimoka.",
 			"target": func(): return Vector2(get_viewport_rect().size.x - 175.0, 250.0), "r": 90.0, "wait": "upgrade"},
 		{"title": "Investuotojai",
 			"text": "Kartais pasirodo auksinės monetos – investuotojų pinigai. Spėk pagauti, kol neišnyko!",
@@ -137,6 +138,11 @@ func notify(what: String) -> void:
 	if _step < 0 or _step >= _steps.size():
 		return
 	if str(_steps[_step]["wait"]) == what:
+		if what == "work":
+			_clicks += 1
+			_text.text = str(_steps[_step]["text"]) + "\n\nPaspausta: %d / 3" % _clicks
+			if _clicks < 3:
+				return
 		_go(_step + 1)
 
 func finish() -> void:

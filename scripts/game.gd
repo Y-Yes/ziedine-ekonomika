@@ -55,12 +55,18 @@ const CATASTROPHE_TIME := 15.0   # seconds at 100 % pollution -> planet lost
 const BANKRUPT_AT := -150.0      # debt limit -> bankruptcy
 
 const DIFFICULTIES := [
-	{"title": "Lengvas", "desc": "Mažiau atliekų, daugiau pinigų,\nnelaimės retesnės",
-		"spawn": 1.3, "money": 45.0, "pol": 0.7, "disaster": 65.0, "target": -10, "fee": 0.7, "score": 0.8},
-	{"title": "Normalus", "desc": "Subalansuotas iššūkis\n(rekomenduojama)",
-		"spawn": 1.0, "money": 25.0, "pol": 1.0, "disaster": 55.0, "target": 0, "fee": 1.0, "score": 1.0},
-	{"title": "Sunkus", "desc": "Daugiau atliekų, griežtesni ES\ntikslai, brangus sąvartynas",
-		"spawn": 0.82, "money": 15.0, "pol": 1.3, "disaster": 45.0, "target": 5, "fee": 1.5, "score": 1.3},
+	{"title": "Lengvas", "desc": "Mažiau atliekų, daugiau pinigų,\nretos ir silpnos nelaimės",
+		"growth": 1.2, "spawn": 1.45, "money": 45.0, "pol": 0.7, "target": -10, "fee": 0.7, "score": 0.8,
+		"haz_every": 90.0, "haz_first": 60.0, "haz_power": 0.7,
+		"haz_types": {"fire": 3, "heat": 2, "strike": 1}},
+	{"title": "Normalus", "desc": "Subalansuotas iššūkis,\nretkarčiais nelaimės",
+		"growth": 1.26, "spawn": 1.1, "money": 30.0, "pol": 0.9, "target": 0, "fee": 1.0, "score": 1.0,
+		"haz_every": 55.0, "haz_first": 50.0, "haz_power": 0.9,
+		"haz_types": {"fire": 3, "flood": 2, "storm": 2, "heat": 2, "strike": 2}},
+	{"title": "Sunkus", "desc": "Daugiau atliekų, griežtesni ES\ntikslai, dažnesnės nelaimės",
+		"growth": 1.3, "spawn": 1.0, "money": 25.0, "pol": 1.05, "target": 5, "fee": 1.3, "score": 1.3,
+		"haz_every": 45.0, "haz_first": 45.0, "haz_power": 1.1,
+		"haz_types": {"fire": 3, "flood": 3, "storm": 3, "heat": 2, "strike": 3}},
 ]
 
 # Market events
@@ -68,13 +74,13 @@ const EVENT_MIN_DELAY := 25.0
 const EVENT_MAX_DELAY := 40.0
 const EVENTS := [
 	{"id": "black_friday", "title": "Juodasis penktadienis",
-		"desc": "Paklausa ×2, kainos +30 %", "time": 18.0},
+		"desc": "Pirkėjų dvigubai daugiau, kainos +30 %", "time": 18.0},
 	{"id": "recession", "title": "Recesija",
 		"desc": "Pirkėjų mažiau, kainos -20 %", "time": 20.0},
 	{"id": "oil", "title": "Naftos kainų šuolis",
-		"desc": "Nauja žaliava ×2 brangesnė, perdirbtų prekių kaina +20 %", "time": 22.0},
+		"desc": "Nauja žaliava dvigubai brangesnė, perdirbtos prekės +20 %", "time": 22.0},
 	{"id": "eu", "title": "Nauja ES direktyva",
-		"desc": "Sąvartyno mokestis ×2", "time": 20.0},
+		"desc": "Sąvartyno mokestis dvigubai didesnis", "time": 20.0},
 	{"id": "deposit", "title": "Taros užstato akcija",
 		"desc": "Surinkimas dirba 60 % greičiau", "time": 20.0},
 	{"id": "grant", "title": "ES žaliųjų investicijų fondas",
@@ -83,7 +89,7 @@ const EVENTS := [
 
 # Investment cards offered at the end of each year (pick one).
 const PERKS := [
-	{"id": "solar", "cat": "eco", "title": "Saulės elektrinės", "desc": "Tarša mažėja\n2× greičiau"},
+	{"id": "solar", "cat": "eco", "title": "Saulės elektrinės", "desc": "Tarša mažėja\ndvigubai greičiau"},
 	{"id": "repair", "cat": "fin", "title": "Remonto tinklas", "desc": "+€3 už kiekvieną\nužbaigtą ciklą"},
 	{"id": "deposit", "cat": "prod", "title": "Taromatų tinklas", "desc": "Surinkimas\n+40 % greitesnis"},
 	{"id": "education", "cat": "prod", "title": "Švietimo kampanija", "desc": "Žmonės rūšiuoja geriau:\nRūšiavimas +40 %"},
@@ -93,8 +99,8 @@ const PERKS := [
 	{"id": "logistics", "cat": "prod", "title": "Logistikos centras", "desc": "Visų stočių sandėlis\n+1 vieta"},
 	{"id": "cleantech", "cat": "eco", "title": "Valymo technologijos", "desc": "Aplinkos valymas\n40 % pigesnis"},
 	{"id": "tax", "cat": "fin", "title": "Mokesčių lengvata", "desc": "Patobulinimai\n20 % pigesni"},
-	{"id": "venture", "cat": "fin", "title": "Rizikos kapitalas", "desc": "Investuotojų monetos\ndažnesnės ir ×1.5 vertės"},
-	{"id": "firebrigade", "cat": "eco", "title": "Gaisrinė", "desc": "Gaisrai užgęsta\n2× greičiau"},
+	{"id": "venture", "cat": "fin", "title": "Rizikos kapitalas", "desc": "Investuotojų monetos dažnesnės\nir 1,5 karto vertingesnės"},
+	{"id": "firebrigade", "cat": "eco", "title": "Gaisrinė", "desc": "Gaisrai gęsta\ndvigubai greičiau"},
 ]
 
 var ring: Ring
@@ -163,6 +169,7 @@ var _income_log: Array = []
 var _shake: float = 0.0
 var _tut_bonus: Bonus = null
 var catastrophe: float = 0.0
+var heat_left: float = 0.0
 var lost_reason: String = ""
 
 func _ready() -> void:
@@ -283,7 +290,8 @@ func start_game(diff_index: int = -1, with_tutorial: bool = false) -> void:
 	elapsed = 0.0
 	spawn_timer = 0.0
 	bonus_timer = randf_range(BONUS_MIN_DELAY, BONUS_MAX_DELAY) * 0.5
-	disaster_timer = 12.0
+	disaster_timer = float(diff["haz_first"])
+	heat_left = 0.0
 	sort_timer = randf_range(25.0, 35.0)
 	event_timer = randf_range(EVENT_MIN_DELAY, EVENT_MAX_DELAY)
 	year = 1
@@ -363,6 +371,7 @@ func choose_card(i: int) -> void:
 	_apply_perk(report_cards[i])
 	year += 1
 	_reset_year_stats()
+	cleanups = 0   # clean-up price escalation restarts every year
 	in_report = false
 	paused = false
 	hud.hide_report()
@@ -535,8 +544,11 @@ func effective_price_mult() -> float:
 func raw_price() -> float:
 	return RAW_COST * raw_cost_mult
 
+## Cleaning up gets pricier every year and after every clean-up – prevention
+## is always cheaper than the cure.
 func cleanup_price() -> float:
-	return round(CLEANUP_COST * pow(1.25, float(cleanups)) * perk_cleanup)
+	var y := float(year - 1)
+	return round((CLEANUP_COST + 12.0 * y + 5.0 * y * y) * pow(1.35, float(cleanups)) * perk_cleanup)
 
 func pollution_stage() -> String:
 	if pollution < 20.0:
@@ -549,7 +561,9 @@ func pollution_stage() -> String:
 
 func add_pollution(amount: float) -> void:
 	if amount > 0.0:
-		amount *= float(diff["pol"])
+		# Small company at the start – its footprint grows over the first 2 years.
+		var ramp := clampf(0.4 + 0.6 * elapsed / (2.0 * YEAR_LEN), 0.4, 1.0)
+		amount *= float(diff["pol"]) * ramp
 	pollution = clampf(pollution + amount, 0.0, 100.0)
 
 func shake(amount: float) -> void:
@@ -558,7 +572,7 @@ func shake(amount: float) -> void:
 static func _fmt(v: float) -> String:
 	if absf(v - round(v)) < 0.05:
 		return str(int(round(v)))
-	return "%.1f" % v
+	return ("%.1f" % v).replace(".", ",")
 
 # --- Main loop -------------------------------------------------------------
 
@@ -599,7 +613,7 @@ func _process(real_delta: float) -> void:
 
 ## Demand grows every year (economic growth): about +30 % per year.
 func _spawn_interval() -> float:
-	var growth := pow(DEMAND_GROWTH, elapsed / YEAR_LEN)
+	var growth := pow(float(diff.get("growth", DEMAND_GROWTH)), elapsed / YEAR_LEN)
 	var iv := maxf(SPAWN_START_INTERVAL / growth, SPAWN_MIN_INTERVAL) * float(diff["spawn"]) / demand_mult
 	if tutorial_active:
 		iv *= 1.6
@@ -647,6 +661,7 @@ func _handle_arrival(t: Token) -> void:
 		return
 	# Overflow: the material falls out of the loop.
 	st.flash = 1.0
+	st.overflow_heat = minf(2.0, st.overflow_heat + 0.5)
 	st.queue_redraw()
 	_to_landfill(t, st.position)
 	hud.flash_overflow()
@@ -659,7 +674,7 @@ func _to_landfill(t: Token, at: Vector2) -> void:
 	add_pollution(POL_OVERFLOW)
 	var fee := LANDFILL_FEE * fine_mult * float(diff["fee"])
 	money -= fee
-	FloatText.spawn(self, at + Vector2(0, -60), "-€%s sąvartynas" % _fmt(fee), Color(1.0, 0.45, 0.4))
+	FloatText.spawn(self, at + Vector2(0, -60), "-€%s į sąvartyną" % _fmt(fee), Color(1.0, 0.45, 0.4))
 	Sfx.play("landfill")
 	shake(0.25)
 	_remove_token(t)
@@ -751,7 +766,7 @@ func clean_up() -> void:
 	add_pollution(-CLEANUP_AMOUNT)
 	Sfx.play("extinguish", 0.0)
 	Juice.confetti(self, center, 24, 0.8)
-	FloatText.spawn(self, center + Vector2(0, -20), "Aplinka išvalyta! -%d taršos" % int(CLEANUP_AMOUNT),
+	FloatText.spawn(self, center + Vector2(0, -20), "Aplinka išvalyta! Tarša -%d %%" % int(CLEANUP_AMOUNT),
 		Color(0.6, 0.95, 1.0), 17)
 
 func upgrade_selected(kind: String) -> void:
@@ -767,10 +782,44 @@ func upgrade_selected(kind: String) -> void:
 	Sfx.play("upgrade", 0.0)
 	Sfx.play("confetti", 0.0)
 	Juice.confetti(self, st.position, 30)
-	FloatText.spawn(self, st.position + Vector2(0, -62), Pipeline.upgrade_name(st.index, kind) + "!",
+	var effect := ""
+	match kind:
+		"speed":
+			effect = "  greitis %s vnt./s" % Station.num(st.process_rate)
+		"cap":
+			effect = "  +%d vietos" % Station.CAP_STEP
+		_:
+			effect = "  +€%s vertė" % Station._eur(Station.VALUE_STEP)
+	FloatText.spawn(self, st.position + Vector2(0, -62), Pipeline.upgrade_name(st.index, kind) + effect,
 		Pipeline.color_of(st.index).lightened(0.3), 16)
 	hud.refresh()
 	hud.tutorial_notify("upgrade")
+
+## Which upgrade pays off most right now (affordable only), or "".
+## Busy / overflowing stations need speed (or storage if it is much cheaper);
+## calm stations earn more with added value.
+func recommend(st: Station) -> String:
+	var fill := float(st.buffer.size()) / float(maxi(1, st.capacity))
+	var pressure := maxf(fill, minf(1.0, st.overflow_heat))
+	var order: Array[String] = ["value", "speed", "cap"]
+	if pressure >= 0.5:
+		order = ["speed", "cap", "value"]
+		if not st.is_maxed("cap") and st.cost_of("cap") * 2 < st.cost_of("speed"):
+			order = ["cap", "speed", "value"]
+	for k in order:
+		if not st.is_maxed(k) and money >= st.cost_of(k):
+			return k
+	return ""
+
+## Cheapest affordable upgrade of a station, or "".
+func cheapest(st: Station) -> String:
+	var best := ""
+	var best_cost := 1e12
+	for k in ["speed", "cap", "value"]:
+		if not st.is_maxed(k) and money >= st.cost_of(k) and st.cost_of(k) < best_cost:
+			best = k
+			best_cost = st.cost_of(k)
+	return best
 
 func select_station(idx: int) -> void:
 	selected_index = idx
@@ -817,31 +866,86 @@ func _try_collect_bonus(pos: Vector2) -> bool:
 
 # --- Disasters (pollution externality) ----------------------------------------
 
+## Disasters happen on every difficulty (more often and stronger on harder
+## ones); pollution makes them up to 3.5× more frequent.
 func _update_disasters(delta: float) -> void:
-	if pollution < float(diff["disaster"]):
-		disaster_timer = maxf(disaster_timer, 8.0)
-		return
-	disaster_timer -= delta * (0.5 + pollution / 100.0)
+	if heat_left > 0.0:
+		heat_left -= delta
+		if heat_left <= 0.0:
+			for st in stations:
+				st.hazard_mult = 1.0
+				st.recompute()
+	disaster_timer -= delta * (1.0 + pollution / 40.0)
 	if disaster_timer > 0.0:
 		return
-	disaster_timer = randf_range(14.0, 24.0)
+	var every := float(diff["haz_every"])
+	disaster_timer = randf_range(every * 0.75, every * 1.25)
+	_trigger_disaster(_pick_disaster())
+
+func _pick_disaster() -> String:
+	var types: Dictionary = diff["haz_types"]
+	var total := 0
+	for k in types:
+		total += int(types[k])
+	var r := randi() % maxi(1, total)
+	for k in types:
+		r -= int(types[k])
+		if r < 0:
+			return str(k)
+	return "fire"
+
+func _trigger_disaster(kind: String) -> void:
+	var power := float(diff["haz_power"])
 	var st := stations[randi() % stations.size()]
-	if randf() < 0.6:
-		st.fire = 9.0
-		hud.show_alert("GAISRAS: %s!" % Pipeline.name_of(st.index), "Spaudyk stotį, kad užgesintum")
-		Sfx.play("fire", 0.0)
-		shake(0.8)
-	else:
-		var lost := st.buffer.size()
-		for t in st.buffer.duplicate():
-			st.buffer.erase(t)
-			_to_landfill(t, st.position)
-		st.flash = 1.0
-		hud.show_alert("POTVYNIS: %s" % Pipeline.name_of(st.index), "Išplauta daiktų: %d" % lost)
-		Sfx.play("flood", 0.0)
-		shake(0.9)
+	match kind:
+		"fire":
+			st.fire = 9.0 * power
+			hud.show_alert("GAISRAS: %s!" % Pipeline.name_of(st.index), "Spausk stotį kelis kartus, kad užgesintum")
+			Sfx.play("fire", 0.0)
+			shake(0.8)
+		"flood":
+			var lost := st.buffer.size()
+			for t in st.buffer.duplicate():
+				st.buffer.erase(t)
+				_to_landfill(t, st.position)
+			st.flash = 1.0
+			hud.show_alert("POTVYNIS: %s" % Pipeline.name_of(st.index), "Išplauta daiktų: %d" % lost)
+			Sfx.play("flood", 0.0)
+			shake(0.9)
+		"storm":
+			var on_belt: Array[Token] = []
+			for t in tokens:
+				if is_instance_valid(t) and t.active:
+					on_belt.append(t)
+			on_belt.shuffle()
+			var n := mini(on_belt.size(), int(round(3.0 * power)))
+			for i in n:
+				_to_landfill(on_belt[i], on_belt[i].position + Vector2(0, 40))
+			hud.show_alert("VĖTRA!", "Nuo konvejerio nupūsta daiktų: %d" % n)
+			Sfx.play("flood", 0.0, 1.4)
+			shake(1.0)
+		"heat":
+			heat_left = 15.0 * power
+			for s2 in stations:
+				s2.hazard_mult = 0.7
+				s2.recompute()
+			hud.show_alert("KARŠČIO BANGA", "Visos stotys %d s dirba 30 %% lėčiau" % int(heat_left))
+			Sfx.play("event", 0.0, 0.7)
+		"strike":
+			if st.index == SORTER and st.sort_alert > 0.0:
+				st = stations[FACTORY]
+			st.strike = 12.0 * power
+			st.strike_cost = 10 + year * 4
+			hud.show_alert("STREIKAS: %s" % Pipeline.name_of(st.index),
+				"Darbuotojai reikalauja didesnių algų. Spausk stotį ir sumokėk €%d" % st.strike_cost)
+			Sfx.play("error", 0.0, 0.8)
+			shake(0.4)
 
 func _update_fires(delta: float) -> void:
+	# A burning station pollutes the air.
+	for st in stations:
+		if st.fire > 0.0:
+			add_pollution(0.6 * float(diff["haz_power"]) * delta)
 	if perk_fire <= 1.0:
 		return
 	for st in stations:
@@ -983,6 +1087,14 @@ func _work(idx: int) -> void:
 	var st := stations[idx]
 	if idx == SORTER and st.sort_alert > 0.0:
 		_open_sorting()
+		return
+	if st.strike > 0.0:
+		if spend(float(st.strike_cost)):
+			st.strike = 0.0
+			FloatText.spawn(self, st.position + Vector2(0, -60), "Algos pakeltos! -€%d" % st.strike_cost, Color(1.0, 0.8, 0.45), 15)
+			Sfx.play("coin", 0.0)
+		else:
+			FloatText.spawn(self, st.position + Vector2(0, -60), "Trūksta pinigų", Color(1.0, 0.5, 0.4), 14)
 		return
 	var burning := st.fire > 0.0
 	if not st.manual_process():

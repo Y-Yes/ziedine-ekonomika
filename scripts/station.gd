@@ -33,6 +33,10 @@ var perk_speed: float = 1.0      # permanent multiplier from investment cards
 var cap_bonus: int = 0           # permanent extra slots from investment cards
 var cost_mult: float = 1.0       # upgrade price multiplier (tax relief card)
 var fire: float = 0.0            # seconds left burning (disaster) – station stops
+var strike: float = 0.0          # seconds left on strike – station stops
+var strike_cost: int = 15        # wage rise that ends the strike at once
+var hazard_mult: float = 1.0     # temporary slowdown (heat wave)
+var overflow_heat: float = 0.0   # recent overflows (decays) – used for buy advice
 var sort_alert: float = 0.0      # >0: mixed waste waiting here (seconds left)
 static var sim_speed: float = 1.0   # global slow-motion factor (sorting mini-game)
 var process_rate: float = BASE_RATE
@@ -78,7 +82,7 @@ func _ready() -> void:
 
 ## Recalculate derived stats from the current upgrade levels.
 func recompute() -> void:
-	process_rate = rate_at(speed_level) * speed_mult * perk_speed
+	process_rate = rate_at(speed_level) * speed_mult * perk_speed * hazard_mult
 	capacity = cap_at(cap_level) + cap_bonus
 	queue_redraw()
 
@@ -120,6 +124,19 @@ func cost_of(kind: String) -> int:
 	var lvl := level_of(kind)
 	return int(round(float(COST_BASE[kind]) * pow(float(COST_GROWTH[kind]), float(lvl - 1)) * cost_mult))
 
+## Longer explanation shown as a tooltip in the shop.
+static func explain(kind: String) -> String:
+	match kind:
+		"speed":
+			return "Greitis: stotis apdoroja daugiau daiktų per sekundę."
+		"cap":
+			return ("Sandėlis: telpa daugiau daiktų (matai langelius virš stoties),\n"
+				+ "todėl stotis rečiau persipildo ir mažiau teršia.\n"
+				+ "Masto ekonomija: kai sandėlis bent pusiau pilnas (žalia linija),\n"
+				+ "stotis dirba partijomis – +6 % greičiau už kiekvieną lygį.")
+		_:
+			return "Pridėtinė vertė: kiekvienas šios stoties apdorotas daiktas\nparduodamas brangiau."
+
 func is_maxed(kind: String) -> bool:
 	return level_of(kind) >= MAX_LEVEL
 
@@ -129,16 +146,20 @@ func preview(kind: String) -> String:
 	match kind:
 		"speed":
 			var m := speed_mult * perk_speed
-			return "Greitis: %.2f → %.2f vnt./s" % [rate_at(l) * m, rate_at(l + 1) * m]
+			return "Greitis %s → %s vnt./s" % [num(rate_at(l) * m), num(rate_at(l + 1) * m)]
 		"cap":
-			return "Vietos %d → %d, masto ekonomija +%d %%" % [cap_at(l) + cap_bonus, cap_at(l + 1) + cap_bonus, int(SCALE_BONUS * 100.0 * float(l))]
+			return "Telpa %d → %d daiktai. Kai pusiau pilna – dirba +%d %% greičiau" % [cap_at(l) + cap_bonus, cap_at(l + 1) + cap_bonus, int(round(SCALE_BONUS * 100.0 * float(l)))]
 		_:
 			if index == 0:
 				return "Už grąžintą daiktą: €%s → €%s" % [_eur(value_at(l)), _eur(value_at(l + 1))]
 			return "Pridėtinė vertė: +€%s → +€%s" % [_eur(value_at(l)), _eur(value_at(l + 1))]
 
 static func _eur(v: float) -> String:
-	return str(int(v)) if absf(v - round(v)) < 0.01 else "%.1f" % v
+	return str(int(v)) if absf(v - round(v)) < 0.01 else ("%.1f" % v).replace(".", ",")
+
+## Number with a Lithuanian decimal comma (2 decimals).
+static func num(v: float) -> String:
+	return ("%.2f" % v).replace(".", ",")
 
 func upgrade(kind: String) -> void:
 	match kind:
@@ -160,6 +181,9 @@ func reset_levels() -> void:
 	cap_bonus = 0
 	cost_mult = 1.0
 	fire = 0.0
+	strike = 0.0
+	overflow_heat = 0.0
+	hazard_mult = 1.0
 	sort_alert = 0.0
 	recompute()
 
@@ -189,6 +213,8 @@ const CLICK_WORK := 0.35   # one click = 35 % of an item's processing
 ## (several clicks finish it). If the station is on fire, clicks put it out.
 func manual_process() -> bool:
 	punch = 1.0
+	if strike > 0.0:
+		return false
 	if fire > 0.0:
 		fire = maxf(0.0, fire - 1.0)
 		return true
@@ -214,11 +240,16 @@ func _process(real_delta: float) -> void:
 		flash = maxf(0.0, flash - delta * 2.0)
 	if punch > 0.0:
 		punch = maxf(0.0, punch - delta * 5.0)
+	if overflow_heat > 0.0:
+		overflow_heat = maxf(0.0, overflow_heat - delta * 0.05)
 	if upgrade_glow > 0.0:
 		upgrade_glow = maxf(0.0, upgrade_glow - delta * 1.5)
 
 	if fire > 0.0:
 		fire = maxf(0.0, fire - delta)
+		return
+	if strike > 0.0:
+		strike = maxf(0.0, strike - delta)
 		return
 
 	if buffer.is_empty():
@@ -288,8 +319,34 @@ func _draw() -> void:
 		var font0 := ThemeDB.fallback_font
 		var ft := "GESINK! %d" % int(ceil(fire))
 		var fwid := font0.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13).x
-		draw_string_outline(font0, Vector2(-fwid * 0.5, -base_radius - 22.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, 4, Color(0, 0, 0, 0.8))
-		draw_string(font0, Vector2(-fwid * 0.5, -base_radius - 22.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(1.0, 0.6, 0.3))
+		draw_string_outline(font0, Vector2(-fwid * 0.5, -base_radius - 34.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, 4, Color(0, 0, 0, 0.8))
+		draw_string(font0, Vector2(-fwid * 0.5, -base_radius - 34.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(1.0, 0.6, 0.3))
+
+	# Strike: grey overlay + sign
+	if strike > 0.0:
+		draw_circle(Vector2.ZERO, r, Color(0.15, 0.15, 0.18, 0.75))
+		var fs := ThemeDB.fallback_font
+		var t1 := "STREIKAS"
+		var w1 := fs.get_string_size(t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12).x
+		draw_rect(Rect2(-w1 * 0.5 - 6.0, -9.0, w1 + 12.0, 18.0), Color(0.85, 0.2, 0.2))
+		draw_string(fs, Vector2(-w1 * 0.5, 5.0), t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, Color.WHITE)
+		var t2 := "Spausk: -€%d (%d s)" % [strike_cost, int(ceil(strike))]
+		var w2 := fs.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12).x
+		draw_string_outline(fs, Vector2(-w2 * 0.5, -base_radius - 34.0), t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, 4, Color(0, 0, 0, 0.85))
+		draw_string(fs, Vector2(-w2 * 0.5, -base_radius - 34.0), t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, Color(1.0, 0.7, 0.6))
+	# Heat wave tint
+	if hazard_mult < 1.0:
+		draw_arc(Vector2.ZERO, r - 3.0, 0.0, TAU, 48, Color(1.0, 0.55, 0.15, 0.6), 3.0, true)
+
+	# Economies of scale active – green chip
+	if scale_active() and fire <= 0.0 and strike <= 0.0:
+		var fc := ThemeDB.fallback_font
+		var bonus := "+%d %%" % int(round(SCALE_BONUS * 100.0 * float(cap_level - 1)))
+		var bw := fc.get_string_size(bonus, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11).x + 10.0
+		var row_w0 := float(mini(10, capacity)) * 9.0
+		var cp := Vector2(row_w0 * 0.5 + 34.0 + bw * 0.5, -base_radius - 13.0)
+		draw_rect(Rect2(cp - Vector2(bw * 0.5, 8.0), Vector2(bw, 16.0)), Color(0.2, 0.6, 0.32, 0.95))
+		draw_string(fc, cp + Vector2(-bw * 0.5 + 5.0, 4.0), bonus, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11, Color.WHITE)
 
 	# Full storage warning – pulsing red ring
 	if buffer.size() >= capacity:
@@ -324,26 +381,44 @@ func _draw() -> void:
 			draw_circle(p, pr, Color(0.36, 0.33, 0.3, flash * 0.75))
 			draw_circle(p + Vector2(-pr * 0.3, -pr * 0.3), pr * 0.45, Color(0.5, 0.47, 0.42, flash * 0.5))
 
-	# Buffer dots along the inner bottom edge, so they don't cover the art.
+	# Storage slots above the station: every place is visible (empty or full),
+	# so a storage upgrade is immediately visible as extra slots.
 	var n := buffer.size()
-	var spread := minf(0.36, PI * 1.1 / float(maxi(1, capacity)))
-	for i in n:
-		var a := PI * 0.5 + (float(i) - float(n - 1) * 0.5) * spread
-		var p := Vector2(cos(a), sin(a)) * (base_radius - 8.0)
-		draw_circle(p, 5.0, Color(0.06, 0.07, 0.1, 0.9))
-		draw_circle(p, 4.0, Pipeline.color_of(buffer[i].form))
+	var per_row := 10
+	var bw2 := 7.0
+	var gap := 2.0
+	var rows := int(ceil(float(capacity) / float(per_row)))
+	var half_full := n * 2 >= capacity
+	for i in capacity:
+		var row := i / per_row
+		var col := i % per_row
+		var in_row := mini(per_row, capacity - row * per_row)
+		var x := (float(col) - float(in_row - 1) * 0.5) * (bw2 + gap) - bw2 * 0.5
+		var y := -base_radius - 18.0 - float(row) * (bw2 + 3.0)
+		var rr := Rect2(x, y, bw2, bw2 + 1.0)
+		if i < n:
+			draw_rect(rr, Pipeline.color_of(buffer[i].form))
+		else:
+			draw_rect(rr, Color(0.08, 0.1, 0.14, 0.9))
+			draw_rect(rr, Color(0.45, 0.52, 0.62, 0.8), false, 1.0)
+	# half-full marker (economies of scale threshold)
+	if cap_level > 1:
+		var hx := (float(mini(per_row, capacity)) * 0.5) * (bw2 + gap)
+		var hy := -base_radius - 18.0 - float(rows - 1) * (bw2 + 3.0) - 4.0
+		draw_line(Vector2(-hx - 2.0, hy), Vector2(hx, hy), Color(0.45, 0.9, 0.55, 0.9 if half_full else 0.35), 2.0)
 
 	var font := ThemeDB.fallback_font
 
-	# Buffer count above the station (red when almost full)
+	# Count next to the slots (red when full)
 	var slot_text := "%d/%d" % [n, capacity]
 	var slot_col := Color(0.85, 0.9, 0.96, 0.9)
 	if n >= capacity:
 		slot_col = Color(1.0, 0.4, 0.35)
 	elif n >= capacity - 1:
 		slot_col = Color(1.0, 0.8, 0.35)
-	draw_string(font, Vector2(-base_radius, -base_radius - 8.0), slot_text,
-		HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, slot_col)
+	var row_w := float(mini(per_row, capacity)) * (bw2 + gap)
+	draw_string(font, Vector2(row_w * 0.5 + 4.0, -base_radius - 9.0), slot_text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, slot_col)
 
 	# Name below the station
 	draw_string(font, Vector2(-base_radius, base_radius + 20.0), Pipeline.name_of(index),

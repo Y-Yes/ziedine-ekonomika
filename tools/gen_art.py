@@ -609,3 +609,137 @@ def main4(outdir):
 
 if __name__ == "__main__" and len(sys.argv) > 2 and sys.argv[2] in ("v2", "v3", "v4"):
     main4(sys.argv[1])
+
+
+# ============================================================ v5: investment card icons (animated)
+def _gear(cx, cy, ro, ri, teeth, rot, fill, stroke):
+    return f'<polygon points="{gear_poly(cx, cy, ro, ri, teeth, rot)}" fill="{fill}" stroke="{stroke}" stroke-width="4"/><circle cx="{cx}" cy="{cy}" r="{ri*0.38:.1f}" fill="{stroke}"/>'
+
+
+def perk_icon(pid, t):
+    d = ""
+    b = ""
+    if pid == "solar":
+        d = grad("pan", "#5fb2ff", "#1d4f9c") + radial("sun", "#fff6b0", "#ffb020")
+        rot = 360 * t / 4
+        b += f'<g transform="rotate({rot*4:.1f} 176 70)">' + ''.join(
+            f'<rect x="172" y="18" width="8" height="22" rx="4" fill="#ffd34a" transform="rotate({k*45} 176 70)"/>' for k in range(8)) + '</g>'
+        b += f'<circle cx="176" cy="70" r="{28 + 2*math.sin(TAU*t):.1f}" fill="url(#sun)"/>'
+        b += '<path d="M40 150 L200 120 L222 196 L62 226 Z" fill="url(#pan)" stroke="#0f2f5f" stroke-width="5" stroke-linejoin="round"/>'
+        b += '<path d="M93 140 L114 216 M146 130 L167 206 M51 188 L211 158" stroke="#9fd2ff" stroke-width="3" opacity=".7"/>'
+        sx = lerp(40, 220, t)
+        b += f'<path d="M{sx-10} {150-(sx-40)*0.19:.1f} l18 -3 l20 76 l-18 3 Z" fill="#fff" opacity=".35"/>'
+    elif pid == "repair":
+        d = grad("wr", "#e8eef5", "#8e9aab")
+        b += _gear(110, 150, 62, 46, 10, 36 * t, "#5ac26e", "#2f7d43")
+        a = 18 * math.sin(TAU * t)
+        b += (f'<g transform="rotate({a - 35:.1f} 150 120)"><path d="M150 40 a28 28 0 1 0 22 46 l-12 -10 l2 -16 l14 -8 l12 8 A28 28 0 0 0 150 40 Z" fill="url(#wr)" stroke="#5b6573" stroke-width="4"/>'
+              f'<rect x="140" y="80" width="24" height="120" rx="12" fill="url(#wr)" stroke="#5b6573" stroke-width="4"/></g>')
+    elif pid == "deposit":
+        d = grad("mach", "#ffc766", "#e88b14") + grad("btl", "#b5ecff", "#3fa9e0")
+        b += '<rect x="70" y="60" width="130" height="170" rx="14" fill="url(#mach)" stroke="#a9620b" stroke-width="5"/>'
+        b += '<rect x="96" y="84" width="78" height="20" rx="10" fill="#3a2a10"/><rect x="96" y="128" width="78" height="44" rx="6" fill="#22303f"/>'
+        u = t
+        by = lerp(-10, 92, min(1, u / 0.5)) if u < 0.5 else 200
+        if u < 0.5:
+            b += f'<g transform="translate(135 {by:.1f})"><rect x="-11" y="-30" width="22" height="40" rx="7" fill="url(#btl)" stroke="#1f7fc2" stroke-width="3"/><rect x="-6" y="-42" width="12" height="13" rx="3" fill="#1f7fc2"/></g>'
+        if u >= 0.5:
+            k = (u - 0.5) / 0.5
+            b += f'<g transform="translate({135} {200 - 60*math.sin(math.pi*k):.1f})" opacity="{1-k*0.6:.2f}"><circle r="18" fill="#ffd84a" stroke="#b9860b" stroke-width="4"/><text x="-8" y="8" font-size="22" font-family="sans-serif" font-weight="bold" fill="#8a5d00">€</text></g>'
+        b += f'<rect x="108" y="140" width="{54*abs(math.sin(TAU*t*2)):.1f}" height="8" rx="4" fill="#5ac26e"/>'
+    elif pid == "education":
+        d = grad("bk", "#7fb4ff", "#2f6fd0") + radial("bulb", "#fffbd0", "#ffd84a")
+        glow = 0.5 + 0.5 * math.sin(TAU * t)
+        b += f'<circle cx="128" cy="78" r="{46 + 8*glow:.1f}" fill="#ffe680" opacity="{0.25 + 0.25*glow:.2f}"/>'
+        b += '<circle cx="128" cy="78" r="38" fill="url(#bulb)" stroke="#c99f10" stroke-width="4"/><rect x="112" y="112" width="32" height="22" rx="5" fill="#9aa4b2"/>'
+        b += '<path d="M40 160 Q84 140 128 162 Q172 140 216 160 V226 Q172 208 128 228 Q84 208 40 226 Z" fill="url(#bk)" stroke="#1d4f9c" stroke-width="5"/>'
+        b += '<path d="M128 162 V228" stroke="#1d4f9c" stroke-width="4"/>'
+        fl = math.cos(math.pi * t)
+        b += f'<path d="M128 162 Q{128 + 44*fl:.1f} 146 {128 + 86*fl:.1f} 162 V222 Q{128 + 44*fl:.1f} 206 128 226 Z" fill="#e8f1ff" stroke="#1d4f9c" stroke-width="3" opacity=".9"/>'
+    elif pid == "bond":
+        d = grad("doc", "#ffffff", "#dfe7d8")
+        b += '<rect x="50" y="40" width="130" height="170" rx="10" fill="url(#doc)" stroke="#5a7a50" stroke-width="5"/>'
+        b += '<path d="M72 76 H158 M72 100 H158 M72 124 H136" stroke="#8aa880" stroke-width="7" stroke-linecap="round"/>'
+        b += '<circle cx="138" cy="170" r="24" fill="#5ac26e" stroke="#2f7d43" stroke-width="4"/><path d="M130 160 q14 -6 14 10 q0 14 -14 10 M126 166 H140 M126 174 H140" stroke="#fff" stroke-width="4" fill="none"/>'
+        for k in range(3):
+            u = (t + k / 3) % 1
+            y = 210 - 80 * math.sin(math.pi * u)
+            b += f'<g transform="translate({192 + k*14} {y:.1f})"><circle r="17" fill="#ffd84a" stroke="#b9860b" stroke-width="4"/></g>'
+    elif pid == "automation":
+        b += _gear(96, 150, 58, 44, 10, 36 * t, "#86bdf5", "#2b6cbf")
+        b += _gear(176, 92, 42, 31, 8, -45 * t + 22, "#c3a2f5", "#7346c4")
+        b += f'<circle cx="190" cy="196" r="{10 + 3*math.sin(TAU*t*2):.1f}" fill="#5ac26e"/>'
+    elif pid == "ecolabel":
+        d = grad("lf", "#9af5b6", "#2fbf63", 1, 1)
+        b += '<circle cx="128" cy="128" r="96" fill="#1f5c33" stroke="#5ac26e" stroke-width="8"/>'
+        b += f'<g transform="rotate({8*math.sin(TAU*t):.1f} 128 140)"><path d="M70 186 Q60 70 190 62 Q198 182 70 186 Z" fill="url(#lf)"/><path d="M80 176 Q126 126 172 82" stroke="#1b8a45" stroke-width="7" fill="none" stroke-linecap="round"/></g>'
+        sx = lerp(-60, 300, t)
+        b += f'<clipPath id="cc"><circle cx="128" cy="128" r="92"/></clipPath><g clip-path="url(#cc)"><path d="M{sx} 20 l28 0 l-60 220 l-28 0 Z" fill="#fff" opacity=".28"/></g>'
+        b += sparkle(196, 56, 14, "#fff7c0", 1, twinkle(t, 0))
+    elif pid == "logistics":
+        d = grad("wh", "#8fa6c4", "#55698a") + grad("bx", "#e9b878", "#b77a35")
+        b += '<path d="M30 120 L128 60 L226 120 V226 H30 Z" fill="url(#wh)" stroke="#2f3d55" stroke-width="5" stroke-linejoin="round"/>'
+        b += '<rect x="70" y="136" width="116" height="90" fill="#26324a"/>'
+        for k in range(3):
+            u = min(1.0, max(0.0, t * 3 - k))
+            y = lerp(60, 196 - k * 30, u * u)
+            if t * 3 >= k:
+                b += f'<rect x="108" y="{y:.1f}" width="40" height="30" rx="3" fill="url(#bx)" stroke="#7a4f1d" stroke-width="3"/>'
+    elif pid == "cleantech":
+        d = grad("fl", "#b9f0ff", "#4aa8d8")
+        b += '<rect x="56" y="130" width="144" height="96" rx="16" fill="url(#fl)" stroke="#1f6f99" stroke-width="5"/>'
+        b += '<path d="M76 154 H180 M76 176 H180 M76 198 H180" stroke="#ffffff" stroke-width="5" opacity=".6"/>'
+        for k in range(6):
+            u = (t + k / 6) % 1
+            x = 80 + (k * 37) % 100
+            y = 120 - 90 * u
+            b += f'<circle cx="{x + 8*math.sin(TAU*(u+k*0.2)):.1f}" cy="{y:.1f}" r="{6 + 6*u:.1f}" fill="#e6fbff" opacity="{(1-u)*0.9:.2f}"/>'
+        for k in range(3):
+            u = (t + k / 3) % 1
+            b += f'<circle cx="{110 + k*20}" cy="{240 + 0*u}" r="5" fill="#6b5a45" opacity="{u*0.8:.2f}"/>'
+    elif pid == "tax":
+        d = radial("tg", "#fff2a8", "#f2c81e")
+        b += '<circle cx="128" cy="128" r="96" fill="url(#tg)" stroke="#b9860b" stroke-width="7"/>'
+        b += '<circle cx="96" cy="96" r="18" fill="none" stroke="#7a5600" stroke-width="12"/><circle cx="160" cy="160" r="18" fill="none" stroke="#7a5600" stroke-width="12"/><path d="M168 82 L88 174" stroke="#7a5600" stroke-width="12" stroke-linecap="round"/>'
+        y = 12 * abs(math.sin(TAU * t))
+        b += f'<g transform="translate(206 {150 + y:.1f})"><path d="M-18 -30 H18 V8 H34 L0 44 L-34 8 H-18 Z" fill="#5ac26e" stroke="#2f7d43" stroke-width="4"/></g>'
+    elif pid == "venture":
+        d = grad("rk", "#ffffff", "#c9d6e6")
+        y = 8 * math.sin(TAU * t)
+        fl = 0.7 + 0.3 * abs(math.sin(TAU * t * 3))
+        b += f'<g transform="translate(0 {y:.1f}) rotate(35 128 128)">'
+        b += f'<path d="M110 186 Q128 {186 + 60*fl:.1f} 146 186 Z" fill="#ff7a2a"/><path d="M118 186 Q128 {186 + 36*fl:.1f} 138 186 Z" fill="#ffd84a"/>'
+        b += '<path d="M128 26 Q170 70 160 170 H96 Q86 70 128 26 Z" fill="url(#rk)" stroke="#4a5a72" stroke-width="5"/>'
+        b += '<circle cx="128" cy="100" r="18" fill="#4a90e0" stroke="#4a5a72" stroke-width="5"/>'
+        b += '<path d="M96 140 L70 186 L100 172 Z M160 140 L186 186 L156 172 Z" fill="#e0575a" stroke="#8a2e30" stroke-width="4"/></g>'
+        for k in range(3):
+            u = (t + k / 3) % 1
+            b += sparkle(40 + k * 70, 230 - 200 * u, 7, "#fff7c0", 1 - u)
+    elif pid == "firebrigade":
+        d = grad("ex", "#ff6a6a", "#c22a2a")
+        fl = 1 - t
+        b += f'<g transform="translate(196 196) scale({0.4 + 0.6*fl:.2f})"><path d="M-26 20 Q-30 -20 0 -50 Q30 -20 26 20 Z" fill="#ff7a2a"/><path d="M-12 20 Q-14 -6 0 -24 Q14 -6 12 20 Z" fill="#ffd84a"/></g>'
+        b += '<rect x="46" y="86" width="64" height="140" rx="22" fill="url(#ex)" stroke="#7a1a1a" stroke-width="5"/>'
+        b += '<rect x="64" y="58" width="28" height="30" rx="6" fill="#4a5a72"/><path d="M92 66 H140 L150 80" stroke="#4a5a72" stroke-width="10" fill="none" stroke-linecap="round"/>'
+        for k in range(7):
+            u = (t * 2 + k / 7) % 1
+            x = lerp(150, 200, u)
+            y = lerp(84, 186, u) + 10 * math.sin(k)
+            b += f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{5 + 7*u:.1f}" fill="#e6f6ff" opacity="{0.9 - 0.6*u:.2f}"/>'
+    return svg(d, b)
+
+
+PERK_IDS = ["solar", "repair", "deposit", "education", "bond", "automation", "ecolabel", "logistics",
+            "cleantech", "tax", "venture", "firebrigade"]
+
+
+def main5(outdir):
+    F = 16
+    S = 96
+    for pid in PERK_IDS:
+        sh = Image.new("RGBA", (S * F, S), (0, 0, 0, 0))
+        for i in range(F):
+            png = cairosvg.svg2png(bytestring=perk_icon(pid, i / F).encode(), output_width=256, output_height=256)
+            sh.paste(Image.open(io.BytesIO(png)).convert("RGBA").resize((S, S), Image.LANCZOS), (i * S, 0))
+        os.makedirs(os.path.join(outdir, "kortos"), exist_ok=True)
+        sh.save(os.path.join(outdir, "kortos", f"{pid}.png"))
