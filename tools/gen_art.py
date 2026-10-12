@@ -483,3 +483,50 @@ def main2(outdir):
 
 if __name__ == "__main__" and len(sys.argv) > 2 and sys.argv[2] == "v2":
     main2(sys.argv[1])
+
+
+# ============================================================ v3: burning planet
+def planet_fire(t):
+    base = planet(t, True)
+    defs_add = ('<radialGradient id="fireglow" cx="0.5" cy="0.5" r="0.5">'
+                '<stop offset="0.72" stop-color="#ff5a1f" stop-opacity="0"/>'
+                '<stop offset="0.86" stop-color="#ff5a1f" stop-opacity=".55"/>'
+                '<stop offset="1" stop-color="#ff2a00" stop-opacity="0"/></radialGradient>')
+    W = 384
+    off = -W * t
+    flames = ""
+    spots = [(70, 100), (180, 130), (282, 80), (330, 168), (120, 188), (230, 60)]
+    for rep in (0, W):
+        for j, (x, y) in enumerate(spots):
+            fx = x + rep + off + 32
+            if fx < 20 or fx > 236:
+                continue
+            ph = (t * 3 + j * 0.37) % 1
+            h = 36 + 10 * math.sin(TAU * ph)
+            w = 15 + 3 * math.sin(TAU * (ph + 0.3))
+            # fade near the planet edge
+            dx = (fx - 128) / 96
+            op = max(0.0, 1 - dx * dx * 1.1)
+            flames += (f'<g opacity="{op:.2f}"><path d="M{fx - w:.1f} {y} Q{fx - w:.1f} {y - h * 0.6:.1f} {fx:.1f} {y - h:.1f} '
+                       f'Q{fx + w:.1f} {y - h * 0.6:.1f} {fx + w:.1f} {y} Q{fx:.1f} {y + 6} {fx - w:.1f} {y} Z" fill="#ff5a1f"/>'
+                       f'<path d="M{fx - w * 0.5:.1f} {y} Q{fx - w * 0.5:.1f} {y - h * 0.4:.1f} {fx:.1f} {y - h * 0.65:.1f} '
+                       f'Q{fx + w * 0.5:.1f} {y - h * 0.4:.1f} {fx + w * 0.5:.1f} {y} Z" fill="#ffd23f"/></g>')
+    base = base.replace('<defs>', '<defs>' + defs_add, 1)
+    base = base.replace('</svg>', f'<circle cx="128" cy="128" r="126" fill="url(#fireglow)"/>'
+                                  f'<g clip-path="url(#pc)">{flames}</g></svg>')
+    # darker, redder ocean
+    base = base.replace('#7d8794', '#7a5a50').replace('#3c434f', '#3a2626')
+    return base
+
+
+def main3(outdir):
+    P = 256
+    sh = Image.new("RGBA", (P * N, P), (0, 0, 0, 0))
+    for i in range(N):
+        png = cairosvg.svg2png(bytestring=planet_fire(i / N).encode(), output_width=512, output_height=512)
+        sh.paste(Image.open(io.BytesIO(png)).convert("RGBA").resize((P, P), Image.LANCZOS), (i * P, 0))
+    sh.save(os.path.join(outdir, "planeta_dega.png"))
+
+
+if __name__ == "__main__" and len(sys.argv) > 2 and sys.argv[2] in ("v2", "v3"):
+    main3(sys.argv[1])

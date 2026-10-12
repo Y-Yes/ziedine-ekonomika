@@ -19,6 +19,8 @@ var angle: float = 0.0
 var target_angle: float = 0.0
 var active: bool = true
 var radius: float = 9.0
+var value: float = 0.0     # € of value accumulated along the value chain
+var raw: bool = false      # made from newly bought (primary) raw material
 
 var _pop: float = 1.0   # 1 = just changed form, eases back to 0
 

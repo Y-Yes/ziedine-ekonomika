@@ -5,18 +5,34 @@
 ## processing the `processed` signal is emitted so the game controller can push
 ## the token to the next stage (or complete the loop). If a token arrives while
 ## the buffer is full the game treats it as an overflow (pollution).
+##
+## Clicking a station does "manual work": one item is processed immediately.
+## Three upgrades can be bought with money: speed, capacity and added value.
 class_name Station
 extends Node2D
 
 signal processed(station, token)
 
 const BASE_RATE := 0.55   # tokens / second at level 1
+const SPEED_STEP := 0.5   # +50 % of base rate per speed level
 const BASE_CAP := 3       # buffer slots at level 1
 const CAP_STEP := 2       # extra slots per capacity level
+const VALUE_STEP := 1.0   # extra € added value per value level
+const MAX_LEVEL := 10
+
+# Upgrade prices (€) at level 1 and their growth per level (tycoon-style).
+const COST_BASE := {"speed": 12.0, "cap": 8.0, "value": 20.0}
+const COST_GROWTH := {"speed": 1.6, "cap": 1.5, "value": 1.75}
 
 var index: int = 0
 var speed_level: int = 1
 var cap_level: int = 1
+var value_level: int = 1
+var speed_mult: float = 1.0      # temporary multiplier from market events
+var perk_speed: float = 1.0      # permanent multiplier from investment cards
+var cap_bonus: int = 0           # permanent extra slots from investment cards
+var cost_mult: float = 1.0       # upgrade price multiplier (tax relief card)
+var fire: float = 0.0            # seconds left burning (disaster) – station stops
 var process_rate: float = BASE_RATE
 var capacity: int = BASE_CAP
 var base_radius: float = 40.0
@@ -24,6 +40,8 @@ var base_radius: float = 40.0
 var buffer: Array[Token] = []
 var selected: bool = false
 var flash: float = 0.0
+var punch: float = 0.0           # click feedback 1 -> 0
+var upgrade_glow: float = 0.0    # purchase feedback 1 -> 0
 
 var _timer: float = 0.0
 
@@ -54,17 +72,80 @@ func _ready() -> void:
 	recompute()
 	set_process(true)
 
+# --- Stats & upgrades ----------------------------------------------------------
+
 ## Recalculate derived stats from the current upgrade levels.
 func recompute() -> void:
-	process_rate = BASE_RATE * float(speed_level)
-	capacity = BASE_CAP + (cap_level - 1) * CAP_STEP
+	process_rate = rate_at(speed_level) * speed_mult * perk_speed
+	capacity = cap_at(cap_level) + cap_bonus
 	queue_redraw()
 
-func speed_cost() -> int:
-	return 3 + (speed_level - 1) * 3
+func rate_at(level: int) -> float:
+	return BASE_RATE * (1.0 + SPEED_STEP * float(level - 1))
 
-func capacity_cost() -> int:
-	return 2 + (cap_level - 1) * 2
+func cap_at(level: int) -> int:
+	return BASE_CAP + (level - 1) * CAP_STEP
+
+func value_at(level: int) -> float:
+	return Pipeline.base_value(index) + VALUE_STEP * float(level - 1)
+
+## € this station adds to every item it processes.
+func value_add() -> float:
+	return value_at(value_level)
+
+func level_of(kind: String) -> int:
+	match kind:
+		"speed":
+			return speed_level
+		"cap":
+			return cap_level
+		_:
+			return value_level
+
+func cost_of(kind: String) -> int:
+	var lvl := level_of(kind)
+	return int(round(float(COST_BASE[kind]) * pow(float(COST_GROWTH[kind]), float(lvl - 1)) * cost_mult))
+
+func is_maxed(kind: String) -> bool:
+	return level_of(kind) >= MAX_LEVEL
+
+## Human readable "now -> after purchase" text for the upgrade panel.
+func preview(kind: String) -> String:
+	var l := level_of(kind)
+	match kind:
+		"speed":
+			var m := speed_mult * perk_speed
+			return "Greitis: %.2f → %.2f vnt./s" % [rate_at(l) * m, rate_at(l + 1) * m]
+		"cap":
+			return "Sandėlis: %d → %d vietos" % [cap_at(l) + cap_bonus, cap_at(l + 1) + cap_bonus]
+		_:
+			if index == 0:
+				return "Už grąžintą daiktą: €%d → €%d" % [int(value_at(l)), int(value_at(l + 1))]
+			return "Pridėtinė vertė: +€%d → +€%d" % [int(value_at(l)), int(value_at(l + 1))]
+
+func upgrade(kind: String) -> void:
+	match kind:
+		"speed":
+			speed_level += 1
+		"cap":
+			cap_level += 1
+		_:
+			value_level += 1
+	upgrade_glow = 1.0
+	recompute()
+
+func reset_levels() -> void:
+	speed_level = 1
+	cap_level = 1
+	value_level = 1
+	speed_mult = 1.0
+	perk_speed = 1.0
+	cap_bonus = 0
+	cost_mult = 1.0
+	fire = 0.0
+	recompute()
+
+# --- Buffer ---------------------------------------------------------------------
 
 ## Try to absorb an arriving token. Returns false when the buffer is full.
 func receive(token: Token) -> bool:
@@ -84,16 +165,36 @@ func clear_buffer() -> void:
 	_timer = 0.0
 	queue_redraw()
 
+## Player clicked the station: process one waiting item right now.
+## If the station is on fire, each click puts the fire out a bit instead.
+func manual_process() -> bool:
+	punch = 1.0
+	if fire > 0.0:
+		fire = maxf(0.0, fire - 1.0)
+		return true
+	if buffer.is_empty():
+		return false
+	_release_one()
+	return true
+
 func _process(delta: float) -> void:
 	if _sheet != null:
 		var fps := IDLE_FPS
 		if not buffer.is_empty():
-			fps = minf(BUSY_FPS * sqrt(float(speed_level)), 36.0)
+			fps = minf(BUSY_FPS * sqrt(process_rate / BASE_RATE), 36.0)
 		_anim = fmod(_anim + delta * fps, float(ANIM_FRAMES))
 	queue_redraw()
 
 	if flash > 0.0:
 		flash = maxf(0.0, flash - delta * 2.0)
+	if punch > 0.0:
+		punch = maxf(0.0, punch - delta * 5.0)
+	if upgrade_glow > 0.0:
+		upgrade_glow = maxf(0.0, upgrade_glow - delta * 1.5)
+
+	if fire > 0.0:
+		fire = maxf(0.0, fire - delta)
+		return
 
 	if buffer.is_empty():
 		_timer = 0.0
@@ -110,17 +211,25 @@ func _release_one() -> void:
 	queue_redraw()
 	processed.emit(self, token)
 
+# --- Drawing ----------------------------------------------------------------------
+
 func _draw() -> void:
 	var accent := Pipeline.color_of(index)
+	var k := 1.0 - 0.1 * sin(punch * PI)   # squish on click
+	var r := base_radius * k
+
+	# Purchase glow
+	if upgrade_glow > 0.0:
+		draw_circle(Vector2.ZERO, base_radius + 14.0 * upgrade_glow + 4.0, Color(accent, 0.35 * upgrade_glow))
 
 	# Body
-	draw_circle(Vector2.ZERO, base_radius, Color(0.11, 0.13, 0.18, 1.0))
+	draw_circle(Vector2.ZERO, r, Color(0.11, 0.13, 0.18, 1.0))
 
 	# Animated illustration
 	if _sheet != null:
 		var fw := float(_sheet.get_width()) / float(ANIM_FRAMES)
 		var frame := int(_anim) % ANIM_FRAMES
-		var sz := base_radius * 1.6
+		var sz := r * 1.6
 		draw_texture_rect_region(_sheet,
 			Rect2(Vector2(-sz * 0.5, -sz * 0.5 - 2.0), Vector2(sz, sz)),
 			Rect2(fw * frame, 0.0, fw, float(_sheet.get_height())))
@@ -128,13 +237,34 @@ func _draw() -> void:
 	# Rim: dim when idle; while processing a bright arc shows progress
 	# towards releasing the next token.
 	var busy := not buffer.is_empty()
-	draw_arc(Vector2.ZERO, base_radius, 0.0, TAU, 48,
+	draw_arc(Vector2.ZERO, r, 0.0, TAU, 48,
 		accent if not busy else accent.darkened(0.35), 4.0, true)
 	if busy:
 		var frac := clampf(_timer * process_rate, 0.0, 1.0)
 		if frac > 0.01:
-			draw_arc(Vector2.ZERO, base_radius, -PI * 0.5, -PI * 0.5 + TAU * frac, 48,
+			draw_arc(Vector2.ZERO, r, -PI * 0.5, -PI * 0.5 + TAU * frac, 48,
 				accent.lightened(0.25), 5.0, true)
+	if punch > 0.0:
+		draw_arc(Vector2.ZERO, r + 2.0, 0.0, TAU, 48, Color(1, 1, 1, punch * 0.8), 3.0, true)
+
+	# Fire (disaster): flickering flames over the station
+	if fire > 0.0:
+		var tt := Time.get_ticks_msec() / 1000.0
+		draw_circle(Vector2.ZERO, r, Color(0.3, 0.05, 0.0, 0.45))
+		for j in 7:
+			var fx := (float(j) - 3.0) * 10.0
+			var fh := 26.0 + 10.0 * sin(tt * 11.0 + float(j) * 1.7) - absf(fx) * 0.5
+			var fw := 8.0
+			var by := 18.0 - absf(fx) * 0.25
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(fx - fw, by), Vector2(fx, by - fh), Vector2(fx + fw, by)]), Color(1.0, 0.35, 0.1, 0.9))
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(fx - fw * 0.5, by), Vector2(fx, by - fh * 0.6), Vector2(fx + fw * 0.5, by)]), Color(1.0, 0.85, 0.25, 0.95))
+		var font0 := ThemeDB.fallback_font
+		var ft := "GESINK! %d" % int(ceil(fire))
+		var fwid := font0.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13).x
+		draw_string_outline(font0, Vector2(-fwid * 0.5, -base_radius - 22.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, 4, Color(0, 0, 0, 0.8))
+		draw_string(font0, Vector2(-fwid * 0.5, -base_radius - 22.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(1.0, 0.6, 0.3))
 
 	# Selection highlight
 	if selected:
@@ -145,12 +275,12 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, base_radius + 3.0, 0.0, TAU, 48, Color(1.0, 0.25, 0.25, flash), 7.0, true)
 		# Pollution smog puffs rising from the overflowing station.
 		var g := 1.0 - flash
-		for k in 4:
-			var p := Vector2((float(k) - 1.5) * 13.0 + sin(g * 6.0 + k) * 4.0,
-				-base_radius * 0.3 - g * 55.0 - float(k % 2) * 10.0)
-			var r := 9.0 + g * 14.0 + float(k % 2) * 3.0
-			draw_circle(p, r, Color(0.36, 0.33, 0.3, flash * 0.75))
-			draw_circle(p + Vector2(-r * 0.3, -r * 0.3), r * 0.45, Color(0.5, 0.47, 0.42, flash * 0.5))
+		for j in 4:
+			var p := Vector2((float(j) - 1.5) * 13.0 + sin(g * 6.0 + j) * 4.0,
+				-base_radius * 0.3 - g * 55.0 - float(j % 2) * 10.0)
+			var pr := 9.0 + g * 14.0 + float(j % 2) * 3.0
+			draw_circle(p, pr, Color(0.36, 0.33, 0.3, flash * 0.75))
+			draw_circle(p + Vector2(-pr * 0.3, -pr * 0.3), pr * 0.45, Color(0.5, 0.47, 0.42, flash * 0.5))
 
 	# Buffer dots along the inner bottom edge, so they don't cover the art.
 	var n := buffer.size()
@@ -163,10 +293,15 @@ func _draw() -> void:
 
 	var font := ThemeDB.fallback_font
 
-	# Buffer count above the station
+	# Buffer count above the station (red when almost full)
 	var slot_text := "%d/%d" % [n, capacity]
+	var slot_col := Color(0.85, 0.9, 0.96, 0.9)
+	if n >= capacity:
+		slot_col = Color(1.0, 0.4, 0.35)
+	elif n >= capacity - 1:
+		slot_col = Color(1.0, 0.8, 0.35)
 	draw_string(font, Vector2(-base_radius, -base_radius - 8.0), slot_text,
-		HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(0.85, 0.9, 0.96, 0.9))
+		HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, slot_col)
 
 	# Name below the station
 	draw_string(font, Vector2(-base_radius, base_radius + 20.0), Pipeline.name_of(index),
