@@ -75,7 +75,7 @@ func _draw() -> void:
 			var a := _t * (3.0 + k * 0.4) + float(k) * 1.3
 			var p := Vector2(cos(a) * (14.0 + k * 3.0), top + sin(a * 1.7) * 8.0)
 			draw_circle(p, 1.6, Color(0.05, 0.05, 0.05, 0.9))
-	var txt := "Sąvartynas: %d" % count
+	var txt := Loc.t("Sąvartynas: %d") % count
 	var w := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13).x
 	var k2 := 1.0 + 0.15 * _bump
 	draw_string(font, Vector2(-w * 0.5 * k2, 22.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(13 * k2),

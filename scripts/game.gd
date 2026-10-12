@@ -56,15 +56,15 @@ const BANKRUPT_AT := -150.0      # debt limit -> bankruptcy
 
 const DIFFICULTIES := [
 	{"title": "Lengvas", "desc": "Mažiau atliekų, daugiau pinigų,\nretos ir silpnos nelaimės",
-		"growth": 1.2, "spawn": 1.45, "money": 45.0, "pol": 0.7, "target": -10, "fee": 0.7, "score": 0.8,
+		"growth": 0.35, "growth2": 0.01, "spawn": 1.45, "money": 45.0, "pol": 0.7, "target": -10, "fee": 0.7, "score": 0.8,
 		"haz_every": 90.0, "haz_first": 60.0, "haz_power": 0.7,
 		"haz_types": {"fire": 3, "heat": 2, "strike": 1}},
 	{"title": "Normalus", "desc": "Subalansuotas iššūkis,\nretkarčiais nelaimės",
-		"growth": 1.26, "spawn": 1.1, "money": 30.0, "pol": 0.9, "target": 0, "fee": 1.0, "score": 1.0,
+		"growth": 0.45, "growth2": 0.015, "spawn": 1.1, "money": 30.0, "pol": 0.9, "target": 0, "fee": 1.0, "score": 1.0,
 		"haz_every": 55.0, "haz_first": 50.0, "haz_power": 0.9,
 		"haz_types": {"fire": 3, "flood": 2, "storm": 2, "heat": 2, "strike": 2}},
 	{"title": "Sunkus", "desc": "Daugiau atliekų, griežtesni ES\ntikslai, dažnesnės nelaimės",
-		"growth": 1.3, "spawn": 1.0, "money": 25.0, "pol": 1.05, "target": 5, "fee": 1.3, "score": 1.3,
+		"growth": 0.52, "growth2": 0.02, "spawn": 1.0, "money": 25.0, "pol": 1.05, "target": 5, "fee": 1.3, "score": 1.3,
 		"haz_every": 45.0, "haz_first": 45.0, "haz_power": 1.1,
 		"haz_types": {"fire": 3, "flood": 3, "storm": 3, "heat": 2, "strike": 3}},
 ]
@@ -177,6 +177,7 @@ func _ready() -> void:
 	var vp := get_viewport_rect().size
 	center = Vector2(vp.x * 0.5, vp.y * 0.5 + 14.0)
 
+	Loc.load_lang()
 	sfx = Sfx.new()
 	add_child(sfx)
 
@@ -229,6 +230,39 @@ func _relayout() -> void:
 			t.position = ring.position_for_angle(t.angle)
 	landfill.position = Vector2(center.x + 165.0, vp.y - 34.0)
 	hud.relayout(vp)
+
+func toggle_pause() -> void:
+	if not running or finished or in_report or sorting_active:
+		return
+	paused = not paused
+	hud.set_paused(paused)
+	Sfx.play("whoosh", 0.0)
+
+## Leave the current game and go back to the start screen.
+func quit_to_menu() -> void:
+	running = false
+	paused = false
+	finished = false
+	in_report = false
+	sorting_active = false
+	Station.sim_speed = 1.0
+	for t in tokens:
+		if is_instance_valid(t):
+			t.queue_free()
+	tokens.clear()
+	for b in bonuses:
+		if is_instance_valid(b):
+			b.queue_free()
+	bonuses.clear()
+	for st in stations:
+		st.clear_buffer()
+		st.reset_levels()
+		st.selected = false
+	selected_index = -1
+	hud.set_paused(false)
+	hud.hide_panel()
+	hud.hide_event()
+	hud.show_start_overlay()
 
 func toggle_fullscreen() -> void:
 	var fs := DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]
@@ -369,7 +403,12 @@ func choose_card(i: int) -> void:
 	if not in_report or i < 0 or i >= report_cards.size():
 		return
 	_apply_perk(report_cards[i])
+	hud.show_term("opportunity")
 	year += 1
+	if year == 2:
+		get_tree().create_timer(12.0).timeout.connect(func(): if running: hud.show_term("growth"))
+	if year == 3:
+		get_tree().create_timer(6.0).timeout.connect(func(): if running: hud.show_term("circularity"))
 	_reset_year_stats()
 	cleanups = 0   # clean-up price escalation restarts every year
 	in_report = false
@@ -395,7 +434,7 @@ func _apply_perk(p: Dictionary) -> void:
 		"education":
 			stations[2].perk_speed *= 1.4
 		"bond":
-			earn(150.0, center, "obligacijos")
+			earn(150.0, center, Loc.t("obligacijos"))
 		"automation":
 			for st in stations:
 				st.perk_speed *= 1.15
@@ -436,7 +475,7 @@ func _check_lose(delta: float) -> void:
 		if catastrophe == 0.0:
 			Sfx.play("fire", 0.0, 0.8)
 		catastrophe += delta
-		hud.show_alert("EKOLOGINĖ KATASTROFA!", "Planeta žus po %d s – mažink taršą!" % int(ceil(CATASTROPHE_TIME - catastrophe)))
+		hud.show_alert(Loc.t("EKOLOGINĖ KATASTROFA!"), Loc.t("Planeta žus po %d s – mažink taršą!") % int(ceil(CATASTROPHE_TIME - catastrophe)))
 		shake(0.15)
 		if catastrophe >= CATASTROPHE_TIME:
 			_lose("planet")
@@ -461,19 +500,19 @@ func final_score() -> int:
 
 func final_title() -> String:
 	if lost_reason == "planet":
-		return "Planeta neatlaikė"
+		return Loc.t("Planeta neatlaikė")
 	if lost_reason == "bankrupt":
-		return "Bankrotas"
+		return Loc.t("Bankrotas")
 	var circ := circularity()
 	if pollution < 25.0 and circ >= 70.0:
-		return "Žiedinės ekonomikos lyderis"
+		return Loc.t("Žiedinės ekonomikos lyderis")
 	if pollution < 40.0:
-		return "Žalioji įmonė"
+		return Loc.t("Žalioji įmonė")
 	if pollution >= 75.0 and total_earned >= 2000.0:
-		return "Godus milijonierius ant degančios planetos"
+		return Loc.t("Godus milijonierius ant degančios planetos")
 	if pollution >= 75.0:
-		return "Planetos degintojas"
-	return "Pusiaukelėje į žiedinę ekonomiką"
+		return Loc.t("Planetos degintojas")
+	return Loc.t("Pusiaukelėje į žiedinę ekonomiką")
 
 # --- Tutorial hooks ---------------------------------------------------------------
 
@@ -552,12 +591,12 @@ func cleanup_price() -> float:
 
 func pollution_stage() -> String:
 	if pollution < 20.0:
-		return "Švari planeta"
+		return Loc.t("Švari planeta")
 	if pollution < 45.0:
-		return "Planeta pilkėja"
+		return Loc.t("Planeta pilkėja")
 	if pollution < 70.0:
-		return "Smogas"
-	return "Planeta dega!"
+		return Loc.t("Smogas")
+	return Loc.t("Planeta dega!")
 
 func add_pollution(amount: float) -> void:
 	if amount > 0.0:
@@ -572,7 +611,7 @@ func shake(amount: float) -> void:
 static func _fmt(v: float) -> String:
 	if absf(v - round(v)) < 0.05:
 		return str(int(round(v)))
-	return ("%.1f" % v).replace(".", ",")
+	return Station._dec("%.1f" % v)
 
 # --- Main loop -------------------------------------------------------------
 
@@ -605,15 +644,24 @@ func _process(real_delta: float) -> void:
 	_update_fires(delta)
 	_move_tokens(delta)
 	_check_lose(delta)
+	if pollution >= 30.0:
+		hud.show_term("externality")
+	if int(elapsed * 2.0) % 2 == 0:
+		for st in stations:
+			if st.scale_active():
+				hud.show_term("scale")
+				break
 	if finished:
 		return
 	hud.refresh()
 	if year_time >= YEAR_LEN and not sorting_active:
 		_end_year()
 
-## Demand grows every year (economic growth): about +30 % per year.
+## Demand grows steadily every year (economic growth): each year adds the
+## same amount of demand ("growth" = share of the starting demand per year).
 func _spawn_interval() -> float:
-	var growth := pow(float(diff.get("growth", DEMAND_GROWTH)), elapsed / YEAR_LEN)
+	var yrs := elapsed / YEAR_LEN
+	var growth := 1.0 + float(diff.get("growth", 0.45)) * yrs + float(diff.get("growth2", 0.015)) * yrs * yrs
 	var iv := maxf(SPAWN_START_INTERVAL / growth, SPAWN_MIN_INTERVAL) * float(diff["spawn"]) / demand_mult
 	if tutorial_active:
 		iv *= 1.6
@@ -668,13 +716,14 @@ func _handle_arrival(t: Token) -> void:
 
 ## Item leaves the loop: landfill, pollution and the landfill tax.
 func _to_landfill(t: Token, at: Vector2) -> void:
+	hud.show_term("pigou")
 	landfill.add(t.form)
 	landfilled += 1
 	y_landfill += 1
 	add_pollution(POL_OVERFLOW)
 	var fee := LANDFILL_FEE * fine_mult * float(diff["fee"])
 	money -= fee
-	FloatText.spawn(self, at + Vector2(0, -60), "-€%s į sąvartyną" % _fmt(fee), Color(1.0, 0.45, 0.4))
+	FloatText.spawn(self, at + Vector2(0, -60), Loc.t("-€%s į sąvartyną") % _fmt(fee), Color(1.0, 0.45, 0.4))
 	Sfx.play("landfill")
 	shake(0.25)
 	_remove_token(t)
@@ -687,7 +736,7 @@ func _on_station_processed(station: Station, token: Token) -> void:
 		# A product has gone all the way around and reached the user again.
 		loops += 1
 		add_pollution(-POL_LOOP_CLEAN)
-		earn(station.value_add() + perk_loop_bonus, station.position + Vector2(0, -60), "užstatas")
+		earn(station.value_add() + perk_loop_bonus, station.position + Vector2(0, -60), Loc.t("užstatas"))
 		_remove_token(token)
 		return
 
@@ -705,6 +754,7 @@ func _on_station_processed(station: Station, token: Token) -> void:
 			price *= 1.2
 		earn(price, station.position + Vector2(0, -60))
 		Sfx.play("sale")
+		hud.show_term("value_added")
 		token.value = 0.0
 		token.raw = false
 
@@ -731,12 +781,12 @@ func buy_raw() -> void:
 	var fac := stations[FACTORY]
 	var at := fac.position + Vector2(0, -60)
 	if fac.buffer.size() >= fac.capacity:
-		FloatText.spawn(self, at, "Sandėlis pilnas", Color(1.0, 0.8, 0.4), 15)
+		FloatText.spawn(self, at, Loc.t("Sandėlis pilnas"), Color(1.0, 0.8, 0.4), 15)
 		Sfx.play("error", 0.0)
 		return
 	var price := raw_price()
 	if not spend(price):
-		FloatText.spawn(self, at, "Trūksta pinigų", Color(1.0, 0.5, 0.4), 15)
+		FloatText.spawn(self, at, Loc.t("Trūksta pinigų"), Color(1.0, 0.5, 0.4), 15)
 		return
 	var t := Token.new()
 	t.radius = TOKEN_RADIUS
@@ -751,8 +801,9 @@ func buy_raw() -> void:
 	fac.receive(t)
 	fac.punch = 1.0
 	add_pollution(POL_RAW)
+	hud.show_term("linear")
 	Sfx.play("work", 0.05, 0.8)
-	FloatText.spawn(self, at, "-€%s žaliava" % _fmt(price), Color(1.0, 0.75, 0.45), 15)
+	FloatText.spawn(self, at, Loc.t("-€%s žaliava") % _fmt(price), Color(1.0, 0.75, 0.45), 15)
 
 ## Pay to clean the environment (always more expensive than prevention).
 func clean_up() -> void:
@@ -760,13 +811,13 @@ func clean_up() -> void:
 		return
 	var price := cleanup_price()
 	if not spend(price):
-		FloatText.spawn(self, center, "Trūksta pinigų", Color(1.0, 0.5, 0.4), 15)
+		FloatText.spawn(self, center, Loc.t("Trūksta pinigų"), Color(1.0, 0.5, 0.4), 15)
 		return
 	cleanups += 1
 	add_pollution(-CLEANUP_AMOUNT)
 	Sfx.play("extinguish", 0.0)
 	Juice.confetti(self, center, 24, 0.8)
-	FloatText.spawn(self, center + Vector2(0, -20), "Aplinka išvalyta! Tarša -%d %%" % int(CLEANUP_AMOUNT),
+	FloatText.spawn(self, center + Vector2(0, -20), Loc.t("Aplinka išvalyta! Tarša -%d %%") % int(CLEANUP_AMOUNT),
 		Color(0.6, 0.95, 1.0), 17)
 
 func upgrade_selected(kind: String) -> void:
@@ -785,11 +836,11 @@ func upgrade_selected(kind: String) -> void:
 	var effect := ""
 	match kind:
 		"speed":
-			effect = "  greitis %s vnt./s" % Station.num(st.process_rate)
+			effect = Loc.t("  greitis %s vnt./s") % Station.num(st.process_rate)
 		"cap":
-			effect = "  +%d vietos" % Station.CAP_STEP
+			effect = Loc.t("  +%d vietos") % Station.CAP_STEP
 		_:
-			effect = "  +€%s vertė" % Station._eur(Station.VALUE_STEP)
+			effect = Loc.t("  +€%s vertė") % Station._eur(Station.VALUE_STEP)
 	FloatText.spawn(self, st.position + Vector2(0, -62), Pipeline.upgrade_name(st.index, kind) + effect,
 		Pipeline.color_of(st.index).lightened(0.3), 16)
 	hud.refresh()
@@ -855,7 +906,7 @@ func _update_bonus(delta: float) -> void:
 func _try_collect_bonus(pos: Vector2) -> bool:
 	for b in bonuses:
 		if is_instance_valid(b) and b.hit(pos):
-			earn(float(b.amount), b.position + Vector2(0, -30), "investicija")
+			earn(float(b.amount), b.position + Vector2(0, -30), Loc.t("investicija"))
 			Sfx.play("bonus_get", 0.0)
 			Juice.confetti(self, b.position, 14, 0.6)
 			bonuses.erase(b)
@@ -900,7 +951,7 @@ func _trigger_disaster(kind: String) -> void:
 	match kind:
 		"fire":
 			st.fire = 9.0 * power
-			hud.show_alert("GAISRAS: %s!" % Pipeline.name_of(st.index), "Spausk stotį kelis kartus, kad užgesintum")
+			hud.show_alert(Loc.t("GAISRAS: %s!") % Pipeline.name_of(st.index), Loc.t("Spausk stotį kelis kartus, kad užgesintum"))
 			Sfx.play("fire", 0.0)
 			shake(0.8)
 		"flood":
@@ -909,7 +960,7 @@ func _trigger_disaster(kind: String) -> void:
 				st.buffer.erase(t)
 				_to_landfill(t, st.position)
 			st.flash = 1.0
-			hud.show_alert("POTVYNIS: %s" % Pipeline.name_of(st.index), "Išplauta daiktų: %d" % lost)
+			hud.show_alert(Loc.t("POTVYNIS: %s") % Pipeline.name_of(st.index), Loc.t("Išplauta daiktų: %d") % lost)
 			Sfx.play("flood", 0.0)
 			shake(0.9)
 		"storm":
@@ -921,7 +972,7 @@ func _trigger_disaster(kind: String) -> void:
 			var n := mini(on_belt.size(), int(round(3.0 * power)))
 			for i in n:
 				_to_landfill(on_belt[i], on_belt[i].position + Vector2(0, 40))
-			hud.show_alert("VĖTRA!", "Nuo konvejerio nupūsta daiktų: %d" % n)
+			hud.show_alert(Loc.t("VĖTRA!"), Loc.t("Nuo konvejerio nupūsta daiktų: %d") % n)
 			Sfx.play("flood", 0.0, 1.4)
 			shake(1.0)
 		"heat":
@@ -929,15 +980,16 @@ func _trigger_disaster(kind: String) -> void:
 			for s2 in stations:
 				s2.hazard_mult = 0.7
 				s2.recompute()
-			hud.show_alert("KARŠČIO BANGA", "Visos stotys %d s dirba 30 %% lėčiau" % int(heat_left))
+			hud.show_alert(Loc.t("KARŠČIO BANGA"), Loc.t("Visos stotys %d s dirba 30 %% lėčiau") % int(heat_left))
 			Sfx.play("event", 0.0, 0.7)
 		"strike":
 			if st.index == SORTER and st.sort_alert > 0.0:
 				st = stations[FACTORY]
+			hud.show_term("labour")
 			st.strike = 12.0 * power
 			st.strike_cost = 10 + year * 4
-			hud.show_alert("STREIKAS: %s" % Pipeline.name_of(st.index),
-				"Darbuotojai reikalauja didesnių algų. Spausk stotį ir sumokėk €%d" % st.strike_cost)
+			hud.show_alert(Loc.t("STREIKAS: %s") % Pipeline.name_of(st.index),
+				Loc.t("Darbuotojai reikalauja didesnių algų. Spausk stotį ir sumokėk €%d") % st.strike_cost)
 			Sfx.play("error", 0.0, 0.8)
 			shake(0.4)
 
@@ -963,14 +1015,14 @@ func _update_sorting(delta: float) -> void:
 			sorter.sort_alert = 0.0
 			for i in 3:
 				sorting_mistake(2)
-			FloatText.spawn(self, sorter.position + Vector2(0, -60), "Mišrios atliekos išmestos!", Color(1.0, 0.5, 0.4), 15)
+			FloatText.spawn(self, sorter.position + Vector2(0, -60), Loc.t("Mišrios atliekos išmestos!"), Color(1.0, 0.5, 0.4), 15)
 			Sfx.play("sort_bad", 0.0)
 		return
 	sort_timer -= delta
 	if sort_timer <= 0.0:
 		sort_timer = randf_range(SORT_MIN_DELAY, SORT_MAX_DELAY)
 		sorter.sort_alert = SORT_WAIT
-		hud.show_alert("MIŠRIOS ATLIEKOS!", "Spausk Rūšiavimo stotį ir išrūšiuok jas")
+		hud.show_alert(Loc.t("MIŠRIOS ATLIEKOS!"), Loc.t("Spausk Rūšiavimo stotį ir išrūšiuok jas"))
 		Sfx.play("event", 0.0)
 
 func _open_sorting() -> void:
@@ -986,7 +1038,7 @@ func _on_sorting_done(correct: int, total: int, reward: float) -> void:
 	Station.sim_speed = 1.0
 	add_pollution(-0.6 * float(correct))
 	if reward > 0.0:
-		earn(reward, stations[SORTER].position + Vector2(0, -60), "rūšiavimas")
+		earn(reward, stations[SORTER].position + Vector2(0, -60), Loc.t("rūšiavimas"))
 
 ## A sorting mistake (or an unsorted item): it goes to the landfill.
 func sorting_mistake(_item: int) -> void:
@@ -1014,9 +1066,11 @@ func _start_event(e: Dictionary) -> void:
 	event_left = float(e["time"])
 	match str(e["id"]):
 		"black_friday":
+			hud.show_term("demand")
 			demand_mult = 2.0
 			price_mult = 1.3
 		"recession":
+			hud.show_term("demand")
 			demand_mult = 0.6
 			price_mult = 0.8
 		"oil":
@@ -1027,7 +1081,7 @@ func _start_event(e: Dictionary) -> void:
 			stations[1].speed_mult = 1.6
 			stations[1].recompute()
 		"grant":
-			earn(30.0 + elapsed * 0.1, center + Vector2(0, -20), "subsidija")
+			earn(30.0 + elapsed * 0.1, center + Vector2(0, -20), Loc.t("subsidija"))
 	hud.show_event(event, 1.0)
 	Sfx.play("event", 0.0)
 
@@ -1053,9 +1107,7 @@ func _unhandled_input(event_in: InputEvent) -> void:
 	if event_in is InputEventKey and event_in.pressed and not event_in.echo:
 		match event_in.keycode:
 			KEY_ESCAPE:
-				if running and not finished and not in_report:
-					paused = not paused
-					hud.set_paused(paused)
+				toggle_pause()
 			KEY_R:
 				if running:
 					start_game()
@@ -1091,18 +1143,18 @@ func _work(idx: int) -> void:
 	if st.strike > 0.0:
 		if spend(float(st.strike_cost)):
 			st.strike = 0.0
-			FloatText.spawn(self, st.position + Vector2(0, -60), "Algos pakeltos! -€%d" % st.strike_cost, Color(1.0, 0.8, 0.45), 15)
+			FloatText.spawn(self, st.position + Vector2(0, -60), Loc.t("Algos pakeltos! -€%d") % st.strike_cost, Color(1.0, 0.8, 0.45), 15)
 			Sfx.play("coin", 0.0)
 		else:
-			FloatText.spawn(self, st.position + Vector2(0, -60), "Trūksta pinigų", Color(1.0, 0.5, 0.4), 14)
+			FloatText.spawn(self, st.position + Vector2(0, -60), Loc.t("Trūksta pinigų"), Color(1.0, 0.5, 0.4), 14)
 		return
 	var burning := st.fire > 0.0
 	if not st.manual_process():
-		FloatText.spawn(self, st.position + Vector2(0, -58), "tuščia", Color(0.7, 0.75, 0.85), 13)
+		FloatText.spawn(self, st.position + Vector2(0, -58), Loc.t("tuščia"), Color(0.7, 0.75, 0.85), 13)
 		Sfx.play("click", 0.05, 0.8)
 	elif burning:
 		if st.fire <= 0.0:
-			FloatText.spawn(self, st.position + Vector2(0, -60), "Užgesinta!", Color(0.6, 0.9, 1.0), 16)
+			FloatText.spawn(self, st.position + Vector2(0, -60), Loc.t("Užgesinta!"), Color(0.6, 0.9, 1.0), 16)
 			Sfx.play("extinguish", 0.0)
 		else:
 			Sfx.play("work", 0.1, 1.4)

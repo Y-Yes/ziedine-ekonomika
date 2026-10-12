@@ -140,10 +140,10 @@ func _drop_into(bin: int) -> void:
 		_combo = 0
 		Sfx.play("sort_bad", 0.0)
 		var correct_bin: int = ITEMS[_cur]["bin"]
-		_tip = "%s – į %s konteinerį (%s)" % [ITEMS[_cur]["name"],
-			["geltoną", "žalią", "mėlyną"][correct_bin], BIN_NAMES[correct_bin].to_lower()]
+		_tip = Loc.t("%s – į %s konteinerį (%s)") % [Loc.t(str(ITEMS[_cur]["name"])),
+			[Loc.t("geltoną"), Loc.t("žalią"), Loc.t("mėlyną")][correct_bin], Loc.t(BIN_NAMES[correct_bin]).to_lower()]
 		_tip_t = 3.0
-		FloatText.spawn(self, _fly_to + Vector2(0, 40), "Klaida!", Color(1.0, 0.45, 0.4), 22)
+		FloatText.spawn(self, _fly_to + Vector2(0, 40), Loc.t("Klaida!"), Color(1.0, 0.45, 0.4), 22)
 		if game != null:
 			game.sorting_mistake(_cur)
 
@@ -251,8 +251,8 @@ func _draw() -> void:
 	draw_style_box(sb, _panel)
 
 	var cx := _panel.get_center().x
-	_text(fb, "MIŠRIOS ATLIEKOS!", Vector2(cx, _panel.position.y + 42.0), 28, Color("ffe36a"))
-	_text(f, "Nutempk daiktą į teisingą konteinerį (arba spausk konteinerį / klavišus 1–3)",
+	_text(fb, Loc.t("MIŠRIOS ATLIEKOS!"), Vector2(cx, _panel.position.y + 42.0), 28, Color("ffe36a"))
+	_text(f, Loc.t("Nutempk daiktą į teisingą konteinerį (arba spausk konteinerį / klavišus 1–3)"),
 		Vector2(cx, _panel.position.y + 68.0), 14, Color(0.78, 0.84, 0.92))
 
 	# timer bar
@@ -263,12 +263,12 @@ func _draw() -> void:
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * frac, bar.size.y)), tc)
 
 	# progress + combo
-	var prog := "Daiktas %d / %d" % [mini(_total - _queue.size(), _total), _total]
+	var prog := Loc.t("Daiktas %d / %d") % [mini(_total - _queue.size(), _total), _total]
 	draw_string(f, Vector2(_panel.position.x + 40.0, _panel.position.y + 114.0), prog, HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
 		Color(0.75, 0.82, 0.9))
 	if _combo >= 2:
 		var ck := 1.0 + 0.1 * sin(_t * 10.0)
-		var ct := "KOMBO ×%.1f" % (1.0 + 0.5 * float(mini(_combo - 1, 2)))
+		var ct := Loc.t("KOMBO ×%.1f") % (1.0 + 0.5 * float(mini(_combo - 1, 2)))
 		draw_string(fb, Vector2(_panel.end.x - 170.0, _panel.position.y + 116.0), ct, HORIZONTAL_ALIGNMENT_LEFT, -1,
 			int(18 * ck), Color(1.0, 0.8, 0.3))
 
@@ -287,7 +287,7 @@ func _draw() -> void:
 		if _bin_flash[i] > 0.0:
 			var fc := Color(0.4, 1.0, 0.5, 0.35 * _bin_flash[i]) if _bin_ok[i] else Color(1.0, 0.3, 0.25, 0.4 * _bin_flash[i])
 			draw_circle(r.get_center() + Vector2(0, 20), 80.0, fc)
-		_text(fb, BIN_NAMES[i], Vector2(r.get_center().x, r.end.y + 18.0), 13, BIN_COLORS[i].lightened(0.25))
+		_text(fb, Loc.t(BIN_NAMES[i]), Vector2(r.get_center().x, r.end.y + 18.0), 13, BIN_COLORS[i].lightened(0.25))
 		_text(f, str(i + 1), Vector2(r.get_center().x, r.position.y + 6.0), 12, Color(1, 1, 1, 0.5))
 
 	# current item
@@ -305,10 +305,10 @@ func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if not _drag and _fly < 0.0 and _correct + (_total - _correct) == _total and _t < 6.0 and _total - _queue.size() == 1:
 			var hy := 30.0 + 12.0 * sin(_t * 5.0)
-			_text(f, "Tempk mane žemyn!", _pos + Vector2(0, -70.0 - 0.0 * hy), 14, Color(1.0, 0.9, 0.5, 0.9))
+			_text(f, Loc.t("Tempk mane žemyn!"), _pos + Vector2(0, -70.0 - 0.0 * hy), 14, Color(1.0, 0.9, 0.5, 0.9))
 			draw_colored_polygon(PackedVector2Array([_pos + Vector2(70, hy - 10), _pos + Vector2(82, hy - 10), _pos + Vector2(76, hy + 4)]), Color(1.0, 0.9, 0.5, 0.9))
 		if _fly < 0.0:
-			_text(fb, ITEMS[_cur]["name"], _pos + Vector2(0, 74.0), 17, Color(0.95, 0.97, 1.0))
+			_text(fb, Loc.t(str(ITEMS[_cur]["name"])), _pos + Vector2(0, 74.0), 17, Color(0.95, 0.97, 1.0))
 
 	# tip after a mistake
 	if _tip_t > 0.0:
@@ -323,10 +323,10 @@ func _draw() -> void:
 		s2.set_border_width_all(2)
 		s2.set_corner_radius_all(14)
 		draw_style_box(s2, rb)
-		var title := "Puikiai! Viskas išrūšiuota!" if _correct == _total else "Išrūšiuota %d / %d" % [_correct, _total]
+		var title := Loc.t("Puikiai! Viskas išrūšiuota!") if _correct == _total else Loc.t("Išrūšiuota %d / %d") % [_correct, _total]
 		_text(fb, title, Vector2(cx, rb.position.y + 44.0), 24, Color(1, 1, 1))
 		_text(fb, "+€%d" % int(_money), Vector2(cx, rb.position.y + 84.0), 26, Color(1.0, 0.85, 0.4))
-		var extra := "+€10 premija už tobulą rūšiavimą" if _correct == _total else "Neteisingi daiktai iškeliavo į sąvartyną"
+		var extra := Loc.t("+€10 premija už tobulą rūšiavimą") if _correct == _total else Loc.t("Neteisingi daiktai iškeliavo į sąvartyną")
 		_text(f, extra, Vector2(cx, rb.position.y + 116.0), 13, Color(0.75, 0.82, 0.9))
 
 func _text(f: Font, s: String, center: Vector2, sz: int, col: Color) -> void:

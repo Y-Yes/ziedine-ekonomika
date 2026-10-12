@@ -34,23 +34,23 @@ func setup(g: Node, h: Node, f: Font, fb: Font) -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_steps = [
-		{"title": "Sveikas, direktoriau!",
-			"text": "Tai tavo įmonių ratas. Daiktai keliauja per 6 stotis, o kiekviena prideda produktui vertės. Parduotuvėje jis parduodamas, o naudotojas vėl grąžina jį į ratą.",
+		{"title": Loc.t("Sveikas, direktoriau!"),
+			"text": Loc.t("Tai tavo įmonių ratas. Daiktai keliauja per 6 stotis, o kiekviena prideda produktui vertės. Parduotuvėje jis parduodamas, o naudotojas vėl grąžina jį į ratą."),
 			"target": func(): return game.center, "r": 120.0, "wait": ""},
-		{"title": "Rankinis darbas",
-			"text": "Kai stotyje laukia daiktai, spausk ją daug kartų – kiekvienas paspaudimas pagreitina darbą, o keli paspaudimai iškart apdoroja daiktą. Kuo greičiau spaudi, tuo daugiau pagamini! Pabandyk su Surinkimu – paspausk 3 kartus.",
+		{"title": Loc.t("Rankinis darbas"),
+			"text": Loc.t("Kai stotyje laukia daiktai, spausk ją daug kartų – kiekvienas paspaudimas pagreitina darbą, o keli paspaudimai iškart apdoroja daiktą. Kuo greičiau spaudi, tuo daugiau pagamini! Pabandyk su Surinkimu – paspausk 3 kartus."),
 			"target": func(): return game.stations[1].position, "r": 52.0, "wait": "work"},
-		{"title": "Investuok",
-			"text": "Dešinėje atsidarė stoties patobulinimai. Nupirk vieną – pvz., greitį. Lentelėje kairėje švytinti žalia juosta rodo, ką jau gali nusipirkti, o dešinėje mirksi tai, kas labiausiai apsimoka.",
+		{"title": Loc.t("Investuok"),
+			"text": Loc.t("Dešinėje atsidarė stoties patobulinimai. Nupirk vieną – pvz., greitį. Lentelėje kairėje švytinti žalia juosta rodo, ką jau gali nusipirkti, o dešinėje mirksi tai, kas labiausiai apsimoka."),
 			"target": func(): return Vector2(get_viewport_rect().size.x - 175.0, 250.0), "r": 90.0, "wait": "upgrade"},
-		{"title": "Investuotojai",
-			"text": "Kartais pasirodo auksinės monetos – investuotojų pinigai. Spėk pagauti, kol neišnyko!",
+		{"title": Loc.t("Investuotojai"),
+			"text": Loc.t("Kartais pasirodo auksinės monetos – investuotojų pinigai. Spėk pagauti, kol neišnyko!"),
 			"target": func(): return game.tutorial_bonus_pos(), "r": 40.0, "wait": "bonus"},
-		{"title": "Tarša",
-			"text": "Ko nespėsi apdoroti – keliaus į sąvartyną. Tarša mažina kainas, sukelia gaisrus ir potvynius, o planeta pradeda degti.",
+		{"title": Loc.t("Tarša"),
+			"text": Loc.t("Ko nespėsi apdoroti – keliaus į sąvartyną. Tarša mažina kainas, sukelia gaisrus ir potvynius, o planeta pradeda degti."),
 			"target": func(): return Vector2(get_viewport_rect().size.x - 150.0, 38.0), "r": 60.0, "wait": ""},
-		{"title": "10 metų",
-			"text": "Kas minutę – metų ataskaita, ES tikslas ir naujos investicijos. Kartais Rūšiavime pasirodys mišrių atliekų – išrūšiuok jas! Sėkmės!",
+		{"title": Loc.t("10 metų"),
+			"text": Loc.t("Kas minutę – metų ataskaita, ES tikslas ir naujos investicijos. Kartais Rūšiavime pasirodys mišrių atliekų – išrūšiuok jas! Sėkmės!"),
 			"target": func(): return Vector2(get_viewport_rect().size.x - 150.0, 74.0), "r": 50.0, "wait": ""},
 	]
 	_build()
@@ -90,7 +90,7 @@ func _build() -> void:
 	hb.add_theme_constant_override("separation", 8)
 	vb.add_child(hb)
 	_skip_btn = Button.new()
-	_skip_btn.text = "Praleisti vedlį"
+	_skip_btn.text = Loc.t("Praleisti vedlį")
 	_skip_btn.flat = true
 	_skip_btn.focus_mode = Control.FOCUS_NONE
 	_skip_btn.add_theme_color_override("font_color", Color(0.4, 0.42, 0.48))
@@ -127,7 +127,7 @@ func _go(i: int) -> void:
 	_text.text = s["text"]
 	var waiting := str(s["wait"]) != ""
 	_next_btn.visible = not waiting
-	_next_btn.text = "Pradėti!" if i == _steps.size() - 1 else "Toliau"
+	_next_btn.text = Loc.t("Pradėti!") if i == _steps.size() - 1 else Loc.t("Toliau")
 	_target_r = float(s["r"])
 	if str(s["wait"]) == "bonus":
 		game.tutorial_spawn_bonus()
@@ -140,7 +140,7 @@ func notify(what: String) -> void:
 	if str(_steps[_step]["wait"]) == what:
 		if what == "work":
 			_clicks += 1
-			_text.text = str(_steps[_step]["text"]) + "\n\nPaspausta: %d / 3" % _clicks
+			_text.text = str(_steps[_step]["text"]) + Loc.t("\n\nPaspausta: %d / 3") % _clicks
 			if _clicks < 3:
 				return
 		_go(_step + 1)

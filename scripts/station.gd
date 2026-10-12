@@ -128,14 +128,14 @@ func cost_of(kind: String) -> int:
 static func explain(kind: String) -> String:
 	match kind:
 		"speed":
-			return "Greitis: stotis apdoroja daugiau daiktų per sekundę."
+			return Loc.t("Greitis: stotis apdoroja daugiau daiktų per sekundę.")
 		"cap":
-			return ("Sandėlis: telpa daugiau daiktų (matai langelius virš stoties),\n"
-				+ "todėl stotis rečiau persipildo ir mažiau teršia.\n"
-				+ "Masto ekonomija: kai sandėlis bent pusiau pilnas (žalia linija),\n"
-				+ "stotis dirba partijomis – +6 % greičiau už kiekvieną lygį.")
+			return (Loc.t("Sandėlis: telpa daugiau daiktų (matai langelius virš stoties),\n")
+				+ Loc.t("todėl stotis rečiau persipildo ir mažiau teršia.\n")
+				+ Loc.t("Masto ekonomija: kai sandėlis bent pusiau pilnas (žalia linija),\n")
+				+ Loc.t("stotis dirba partijomis – +6 % greičiau už kiekvieną lygį."))
 		_:
-			return "Pridėtinė vertė: kiekvienas šios stoties apdorotas daiktas\nparduodamas brangiau."
+			return Loc.t("Pridėtinė vertė: kiekvienas šios stoties apdorotas daiktas\nparduodamas brangiau.")
 
 func is_maxed(kind: String) -> bool:
 	return level_of(kind) >= MAX_LEVEL
@@ -146,20 +146,24 @@ func preview(kind: String) -> String:
 	match kind:
 		"speed":
 			var m := speed_mult * perk_speed
-			return "Greitis %s → %s vnt./s" % [num(rate_at(l) * m), num(rate_at(l + 1) * m)]
+			return Loc.t("Greitis %s → %s vnt./s") % [num(rate_at(l) * m), num(rate_at(l + 1) * m)]
 		"cap":
-			return "Telpa %d → %d daiktai. Kai pusiau pilna – dirba +%d %% greičiau" % [cap_at(l) + cap_bonus, cap_at(l + 1) + cap_bonus, int(round(SCALE_BONUS * 100.0 * float(l)))]
+			return Loc.t("Telpa %d → %d daiktai. Kai pusiau pilna – dirba +%d %% greičiau") % [cap_at(l) + cap_bonus, cap_at(l + 1) + cap_bonus, int(round(SCALE_BONUS * 100.0 * float(l)))]
 		_:
 			if index == 0:
-				return "Už grąžintą daiktą: €%s → €%s" % [_eur(value_at(l)), _eur(value_at(l + 1))]
-			return "Pridėtinė vertė: +€%s → +€%s" % [_eur(value_at(l)), _eur(value_at(l + 1))]
+				return Loc.t("Už grąžintą daiktą: €%s → €%s") % [_eur(value_at(l)), _eur(value_at(l + 1))]
+			return Loc.t("Pridėtinė vertė: +€%s → +€%s") % [_eur(value_at(l)), _eur(value_at(l + 1))]
 
 static func _eur(v: float) -> String:
-	return str(int(v)) if absf(v - round(v)) < 0.01 else ("%.1f" % v).replace(".", ",")
+	return str(int(v)) if absf(v - round(v)) < 0.01 else _dec("%.1f" % v)
+
+## Decimal comma in Lithuanian, point in English.
+static func _dec(s: String) -> String:
+	return s.replace(".", ",") if Loc.lang == "lt" else s
 
 ## Number with a Lithuanian decimal comma (2 decimals).
 static func num(v: float) -> String:
-	return ("%.2f" % v).replace(".", ",")
+	return _dec("%.2f" % v)
 
 func upgrade(kind: String) -> void:
 	match kind:
@@ -317,7 +321,7 @@ func _draw() -> void:
 			draw_colored_polygon(PackedVector2Array([
 				Vector2(fx - fw * 0.5, by), Vector2(fx, by - fh * 0.6), Vector2(fx + fw * 0.5, by)]), Color(1.0, 0.85, 0.25, 0.95))
 		var font0 := ThemeDB.fallback_font
-		var ft := "GESINK! %d" % int(ceil(fire))
+		var ft := Loc.t("GESINK! %d") % int(ceil(fire))
 		var fwid := font0.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13).x
 		draw_string_outline(font0, Vector2(-fwid * 0.5, -base_radius - 34.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, 4, Color(0, 0, 0, 0.8))
 		draw_string(font0, Vector2(-fwid * 0.5, -base_radius - 34.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(1.0, 0.6, 0.3))
@@ -326,11 +330,11 @@ func _draw() -> void:
 	if strike > 0.0:
 		draw_circle(Vector2.ZERO, r, Color(0.15, 0.15, 0.18, 0.75))
 		var fs := ThemeDB.fallback_font
-		var t1 := "STREIKAS"
+		var t1 := Loc.t("STREIKAS")
 		var w1 := fs.get_string_size(t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12).x
 		draw_rect(Rect2(-w1 * 0.5 - 6.0, -9.0, w1 + 12.0, 18.0), Color(0.85, 0.2, 0.2))
 		draw_string(fs, Vector2(-w1 * 0.5, 5.0), t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, Color.WHITE)
-		var t2 := "Spausk: -€%d (%d s)" % [strike_cost, int(ceil(strike))]
+		var t2 := Loc.t("Spausk: -€%d (%d s)") % [strike_cost, int(ceil(strike))]
 		var w2 := fs.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12).x
 		draw_string_outline(fs, Vector2(-w2 * 0.5, -base_radius - 34.0), t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, 4, Color(0, 0, 0, 0.85))
 		draw_string(fs, Vector2(-w2 * 0.5, -base_radius - 34.0), t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, Color(1.0, 0.7, 0.6))

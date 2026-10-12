@@ -52,7 +52,7 @@ static func color_of(i: int) -> Color:
 ## Localized (Lithuanian by default) display name for a stage index.
 static func name_of(i: int, lithuanian: bool = true) -> String:
 	var s: Dictionary = STAGES[norm(i)]
-	return s["lt"] if lithuanian else s["en"]
+	return Loc.t(str(s["lt"])) if lithuanian else str(s["en"])
 
 ## Short single-letter tag for a stage index.
 static func short_of(i: int) -> String:
@@ -64,7 +64,7 @@ static func base_value(i: int) -> float:
 
 ## Name of upgrade `kind` ("speed" | "cap" | "value") at stage i.
 static func upgrade_name(i: int, kind: String) -> String:
-	return str(STAGES[norm(i)]["up_" + kind])
+	return Loc.t(str(STAGES[norm(i)]["up_" + kind]))
 
 static func fact_of(i: int) -> String:
-	return str(STAGES[norm(i)]["fact"])
+	return Loc.t(str(STAGES[norm(i)]["fact"]))

@@ -78,9 +78,9 @@ func _draw() -> void:
 	draw_style_box(sb, Rect2(Vector2.ZERO, size))
 
 	# Header
-	draw_string(fb, Vector2(PAD + 4.0, PAD + 16.0), "Stotis", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.7, 0.78, 0.9))
+	draw_string(fb, Vector2(PAD + 4.0, PAD + 16.0), Loc.t("Stotis"), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.7, 0.78, 0.9))
 	for c in 3:
-		draw_string(fb, Vector2(PAD + COL_X[c], PAD + 16.0), HEADS[c], HORIZONTAL_ALIGNMENT_LEFT, COL_W + 8.0, 12, HEAD_COLORS[c])
+		draw_string(fb, Vector2(PAD + COL_X[c], PAD + 16.0), Loc.t(HEADS[c]), HORIZONTAL_ALIGNMENT_LEFT, COL_W + 8.0, 12, HEAD_COLORS[c])
 
 	for i in 6:
 		var st: Station = game.stations[i]
