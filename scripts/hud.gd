@@ -119,18 +119,23 @@ func setup(g: Node) -> void:
 	_load_fonts()
 	_build()
 
+const SYMBOL_FONT_PATH := "res://art/fonts/Simboliai.ttf"
+
 func _load_fonts() -> void:
 	var old := ThemeDB.fallback_font
+	# Symbols missing from Nunito (arrows, stars, check marks…) come from a
+	# small bundled DejaVu subset, so they also work in the web version.
+	var sym: Font = load(SYMBOL_FONT_PATH) if ResourceLoader.exists(SYMBOL_FONT_PATH) else null
 	if ResourceLoader.exists(FONT_PATH):
 		var f: FontFile = load(FONT_PATH)
-		f.fallbacks = [old]
+		f.fallbacks = [sym, old] if sym != null else [old]
 		font = f
 		ThemeDB.fallback_font = f
 	else:
 		font = old
 	if ResourceLoader.exists(FONT_BOLD_PATH):
 		var fb: FontFile = load(FONT_BOLD_PATH)
-		fb.fallbacks = [old]
+		fb.fallbacks = [sym, old] if sym != null else [old]
 		bold = fb
 	else:
 		bold = font
