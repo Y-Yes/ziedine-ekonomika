@@ -6,11 +6,15 @@ class_name Landfill
 extends Node2D
 
 const ICONS := "res://art/zetonai.png"
+const BASE_ART := "res://art/savartynas.png"
+const BASE_W := 150.0
+const LIFT := -40.0   # pile sits on the island top, above the label
 const MAX_SHOWN := 70
 
 var count: int = 0
 var _items: Array = []   # [Vector2 offset, form, rotation]
 var _icons: Texture2D
+var _base: Texture2D
 var _t: float = 0.0
 var _bump: float = 0.0
 
@@ -18,6 +22,8 @@ func _ready() -> void:
 	z_index = 0
 	if ResourceLoader.exists(ICONS):
 		_icons = load(ICONS)
+	if ResourceLoader.exists(BASE_ART):
+		_base = load(BASE_ART)
 
 func add(form: int) -> void:
 	count += 1
@@ -49,28 +55,33 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var font := ThemeDB.fallback_font
-	# Ground
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-70, 6), Vector2(-60, -2), Vector2(60, -2), Vector2(70, 6)]), Color(0.2, 0.17, 0.14, 0.9))
+	# Ground: a small floating junk island (falls back to a flat mound)
+	if _base != null:
+		draw_texture_rect(_base, Rect2(-BASE_W * 0.5, LIFT - BASE_W * 0.52, BASE_W, BASE_W), false)
+	else:
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-70, 6), Vector2(-60, -2), Vector2(60, -2), Vector2(70, 6)]), Color(0.2, 0.17, 0.14, 0.9))
+	draw_set_transform(Vector2(0, LIFT + 20.0), 0.0, Vector2(0.72, 0.72))
 	if count > 0:
 		var h := 10.0 + minf(float(count), float(MAX_SHOWN)) * 0.9
 		draw_colored_polygon(PackedVector2Array([
 			Vector2(-62, 2), Vector2(-20, -h * 0.85), Vector2(0, -h), Vector2(20, -h * 0.85), Vector2(62, 2)]),
-			Color(0.27, 0.23, 0.19, 1.0))
+			Color(0.36, 0.3, 0.24, 1.0))
 	if _icons != null:
 		var fw := float(_icons.get_width()) / 6.0
 		for it in _items:
 			var off: Vector2 = it[0]
 			var form: int = it[1]
 			var rot: float = it[2]
-			draw_set_transform(off + Vector2(0, -4), rot, Vector2.ONE)
+			draw_set_transform(Vector2(0, LIFT + 20.0) + (off + Vector2(0, -4)) * 0.72, rot, Vector2(0.72, 0.72))
 			draw_texture_rect_region(_icons, Rect2(-8, -8, 16, 16),
 				Rect2(fw * form, 0, fw, float(_icons.get_height())), Color(0.62, 0.58, 0.55, 1.0))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	# Flies when the pile is big
 	if count >= 8:
 		var flies := mini(8, count / 6)
-		var top := -minf(float(count), float(MAX_SHOWN)) * 0.9 - 18.0
+		var top := LIFT + 18.0 - minf(float(count), float(MAX_SHOWN)) * 0.8 - 14.0
 		for k in flies:
 			var a := _t * (3.0 + k * 0.4) + float(k) * 1.3
 			var p := Vector2(cos(a) * (14.0 + k * 3.0), top + sin(a * 1.7) * 8.0)
@@ -78,5 +89,7 @@ func _draw() -> void:
 	var txt := Loc.t("Sąvartynas: %d") % count
 	var w := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13).x
 	var k2 := 1.0 + 0.15 * _bump
+	draw_string_outline(font, Vector2(-w * 0.5 * k2, 22.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(13 * k2), 5,
+		Color(0.04, 0.06, 0.1, 0.9))
 	draw_string(font, Vector2(-w * 0.5 * k2, 22.0), txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, int(13 * k2),
 		Color(0.85, 0.7, 0.55) if count > 0 else Color(0.55, 0.6, 0.68))

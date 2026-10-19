@@ -63,6 +63,10 @@ const ART := [
 	"res://art/6_parduotuve.png",
 ]
 const ANIM_FRAMES := 24
+## Island art size relative to base_radius, and where its ground ellipse sits.
+const ART_SCALE := 2.9
+const HALO_Y := 0.1
+const HALO_SQUASH := 0.55
 const IDLE_FPS := 7.0      # animation speed while the station is empty
 const BUSY_FPS := 16.0     # animation speed while processing (level 1)
 
@@ -278,48 +282,57 @@ func _draw() -> void:
 	var k := 1.0 - 0.1 * sin(punch * PI)   # squish on click
 	var r := base_radius * k
 
-	# Purchase glow
-	if upgrade_glow > 0.0:
-		draw_circle(Vector2.ZERO, base_radius + 14.0 * upgrade_glow + 4.0, Color(accent, 0.35 * upgrade_glow))
-
-	# Body
-	draw_circle(Vector2.ZERO, r, Color(0.11, 0.13, 0.18, 1.0))
-
-	# Animated illustration
-	if _sheet != null:
-		var fw := float(_sheet.get_width()) / float(ANIM_FRAMES)
-		var frame := int(_anim) % ANIM_FRAMES
-		var sz := r * 1.6
-		draw_texture_rect_region(_sheet,
-			Rect2(Vector2(-sz * 0.5, -sz * 0.5 - 2.0), Vector2(sz, sz)),
-			Rect2(fw * frame, 0.0, fw, float(_sheet.get_height())))
-
-	# Rim: dim when idle; while processing a bright arc shows progress
-	# towards releasing the next token.
+	# Ground halo under the floating island: an ellipse that doubles as the
+	# progress ring (bright arc = progress towards releasing the next item).
+	var art := r * ART_SCALE
 	var busy := not buffer.is_empty()
-	draw_arc(Vector2.ZERO, r, 0.0, TAU, 48,
-		accent if not busy else accent.darkened(0.35), 4.0, true)
+	var hc := Vector2(0.0, art * HALO_Y)
+	draw_set_transform(hc, 0.0, Vector2(1.0, HALO_SQUASH))
+	var hr := art * 0.47
+	if upgrade_glow > 0.0:
+		draw_circle(Vector2.ZERO, hr + 16.0 * upgrade_glow, Color(accent, 0.3 * upgrade_glow))
+	draw_circle(Vector2.ZERO, hr, Color(0.02, 0.04, 0.08, 0.35))
+	draw_arc(Vector2.ZERO, hr, 0.0, TAU, 64, Color(accent, 0.55 if not busy else 0.35), 3.0, true)
 	if busy:
 		var frac := clampf(_timer * effective_rate(), 0.0, 1.0)
 		if frac > 0.01:
-			draw_arc(Vector2.ZERO, r, -PI * 0.5, -PI * 0.5 + TAU * frac, 48,
-				accent.lightened(0.25), 5.0, true)
+			draw_arc(Vector2.ZERO, hr, -PI * 0.5, -PI * 0.5 + TAU * frac, 64, accent.lightened(0.3), 5.0, true)
+	if selected:
+		draw_arc(Vector2.ZERO, hr + 7.0, 0.0, TAU, 64, Color(1, 1, 1, 0.9), 3.0, true)
 	if punch > 0.0:
-		draw_arc(Vector2.ZERO, r + 2.0, 0.0, TAU, 48, Color(1, 1, 1, punch * 0.8), 3.0, true)
+		draw_arc(Vector2.ZERO, hr + 3.0, 0.0, TAU, 64, Color(1, 1, 1, punch * 0.8), 3.0, true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# Animated diorama (floating island). Bobs gently.
+	var isl_bob := sin(Time.get_ticks_msec() / 900.0 + float(index) * 1.3) * 1.5
+	if _sheet != null:
+		var fw := float(_sheet.get_width()) / float(ANIM_FRAMES)
+		var frame := int(_anim) % ANIM_FRAMES
+		draw_texture_rect_region(_sheet,
+			Rect2(Vector2(-art * 0.5, -art * 0.5 - art * 0.06 + isl_bob), Vector2(art, art)),
+			Rect2(fw * frame, 0.0, fw, float(_sheet.get_height())))
 
 	# Fire (disaster): flickering flames over the station
 	if fire > 0.0:
 		var tt := Time.get_ticks_msec() / 1000.0
-		draw_circle(Vector2.ZERO, r, Color(0.3, 0.05, 0.0, 0.45))
-		for j in 7:
-			var fx := (float(j) - 3.0) * 10.0
-			var fh := 26.0 + 10.0 * sin(tt * 11.0 + float(j) * 1.7) - absf(fx) * 0.5
-			var fw := 8.0
-			var by := 18.0 - absf(fx) * 0.25
-			draw_colored_polygon(PackedVector2Array([
-				Vector2(fx - fw, by), Vector2(fx, by - fh), Vector2(fx + fw, by)]), Color(1.0, 0.35, 0.1, 0.9))
-			draw_colored_polygon(PackedVector2Array([
-				Vector2(fx - fw * 0.5, by), Vector2(fx, by - fh * 0.6), Vector2(fx + fw * 0.5, by)]), Color(1.0, 0.85, 0.25, 0.95))
+		# warm glow on the island + layered flame blobs rising from it
+		draw_set_transform(hc, 0.0, Vector2(1.0, HALO_SQUASH))
+		draw_circle(Vector2.ZERO, hr * 1.05, Color(1.0, 0.35, 0.05, 0.22 + 0.06 * sin(tt * 9.0)))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var fy := -art * 0.1
+		for j in 14:
+			var ph := fmod(tt * 1.6 + float(j) * 0.37, 1.0)
+			var fx := sin(float(j) * 2.3) * art * 0.22 + sin(tt * 3.0 + j) * 3.0
+			var p := Vector2(fx * (1.0 - ph * 0.5), fy - ph * art * 0.42)
+			var rad := (1.0 - ph) * art * 0.085 + 2.0
+			var col := Color(1.0, 0.9, 0.35).lerp(Color(1.0, 0.45, 0.1), clampf(ph * 1.6, 0.0, 1.0))
+			col = col.lerp(Color(0.55, 0.12, 0.05), clampf((ph - 0.6) * 2.5, 0.0, 1.0))
+			col.a = 0.9 * (1.0 - ph * 0.6)
+			draw_circle(p, rad, col)
+		for j in 4:
+			var ph2 := fmod(tt * 0.7 + float(j) * 0.25, 1.0)
+			var sp := Vector2(sin(float(j) * 1.9) * 10.0 + ph2 * 8.0, fy - art * 0.4 - ph2 * art * 0.35)
+			draw_circle(sp, 6.0 + ph2 * 12.0, Color(0.22, 0.2, 0.2, 0.45 * (1.0 - ph2)))
 		var font0 := ThemeDB.fallback_font
 		var ft := Loc.t("GESINK! %d") % int(ceil(fire))
 		var fwid := font0.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13).x
@@ -328,7 +341,9 @@ func _draw() -> void:
 
 	# Strike: grey overlay + sign
 	if strike > 0.0:
-		draw_circle(Vector2.ZERO, r, Color(0.15, 0.15, 0.18, 0.75))
+		draw_set_transform(hc + Vector2(0, -art * 0.08), 0.0, Vector2(1.0, 0.8))
+		draw_circle(Vector2.ZERO, hr * 1.05, Color(0.12, 0.12, 0.15, 0.7))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		var fs := ThemeDB.fallback_font
 		var t1 := Loc.t("STREIKAS")
 		var w1 := fs.get_string_size(t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12).x
@@ -369,9 +384,6 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, base_radius + 9.0, -PI * 0.5, -PI * 0.5 + TAU * clampf(sort_alert / 12.0, 0.0, 1.0), 48,
 			Color(1.0, 0.85, 0.2, 0.9), 3.0, true)
 
-	# Selection highlight
-	if selected:
-		draw_arc(Vector2.ZERO, base_radius + 7.0, 0.0, TAU, 48, Color(1, 1, 1, 0.85), 3.0, true)
 
 	# Overflow flash
 	if flash > 0.0:
@@ -399,12 +411,14 @@ func _draw() -> void:
 		var in_row := mini(per_row, capacity - row * per_row)
 		var x := (float(col) - float(in_row - 1) * 0.5) * (bw2 + gap) - bw2 * 0.5
 		var y := -base_radius - 18.0 - float(row) * (bw2 + 3.0)
-		var rr := Rect2(x, y, bw2, bw2 + 1.0)
+		var sc := Vector2(x + bw2 * 0.5, y + bw2 * 0.5)
 		if i < n:
-			draw_rect(rr, Pipeline.color_of(buffer[i].form))
+			draw_circle(sc + Vector2(0, 1), bw2 * 0.55, Color(0, 0, 0, 0.35))
+			draw_circle(sc, bw2 * 0.55, Pipeline.color_of(buffer[i].form))
+			draw_circle(sc - Vector2(1, 1), bw2 * 0.2, Color(1, 1, 1, 0.45))
 		else:
-			draw_rect(rr, Color(0.08, 0.1, 0.14, 0.9))
-			draw_rect(rr, Color(0.45, 0.52, 0.62, 0.8), false, 1.0)
+			draw_circle(sc, bw2 * 0.55, Color(0.06, 0.08, 0.12, 0.85))
+			draw_arc(sc, bw2 * 0.5, 0.0, TAU, 16, Color(0.55, 0.62, 0.72, 0.7), 1.0, true)
 	# half-full marker (economies of scale threshold)
 	if cap_level > 1:
 		var hx := (float(mini(per_row, capacity)) * 0.5) * (bw2 + gap)

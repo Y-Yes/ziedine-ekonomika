@@ -184,7 +184,13 @@ func _style(bg: Color, border: Color, radius: int = 10, bw: int = 2) -> StyleBox
 	sb.bg_color = bg
 	sb.border_color = border
 	sb.set_border_width_all(bw)
+	# chunky bottom edge + soft drop shadow (tactile, game-like panels)
+	sb.border_width_bottom = bw + 2
 	sb.set_corner_radius_all(radius)
+	sb.shadow_color = Color(0.0, 0.0, 0.0, 0.35)
+	sb.shadow_size = 6
+	sb.shadow_offset = Vector2(0, 3)
+	sb.anti_aliasing = true
 	sb.content_margin_left = 12
 	sb.content_margin_right = 12
 	sb.content_margin_top = 8

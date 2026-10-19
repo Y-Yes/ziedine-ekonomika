@@ -40,8 +40,8 @@ func _draw() -> void:
 	var k := 1.0 + 0.35 * _pop
 	if _icons != null:
 		var fw := float(_icons.get_width()) / float(ICON_COUNT)
-		var sz := radius * 2.9 * k
-		draw_circle(Vector2.ZERO, radius * 1.45 * k, Color(c, 0.18))
+		var sz := radius * 3.2 * k
+		draw_circle(Vector2(0, radius * 0.5), radius * 1.1 * k, Color(0, 0, 0, 0.18))
 		draw_texture_rect_region(_icons,
 			Rect2(Vector2(-sz * 0.5, -sz * 0.5), Vector2(sz, sz)),
 			Rect2(fw * Pipeline.norm(form), 0.0, fw, float(_icons.get_height())))

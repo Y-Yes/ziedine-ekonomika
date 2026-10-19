@@ -10,7 +10,8 @@ extends Node2D
 const PLANET_OK := "res://art/planeta.png"
 const PLANET_BAD := "res://art/planeta_tarsa.png"
 const PLANET_FIRE := "res://art/planeta_dega.png"
-const PLANET_FRAMES := 24
+const PLANET_FRAMES := 48
+const PLANET_COLS := 12   # frames are packed in a grid (12 per row)
 const PLANET_FPS := 6.0
 
 var center: Vector2 = Vector2.ZERO
@@ -67,11 +68,13 @@ func _draw() -> void:
 func _draw_planet() -> void:
 	if _planet_ok == null:
 		return
-	var sz := radius * 1.3
+	var sz := radius * 1.22
 	var rect := Rect2(center - Vector2(sz, sz) * 0.5, Vector2(sz, sz))
 	var frame := int(_planet_anim) % PLANET_FRAMES
-	var fw := float(_planet_ok.get_width()) / float(PLANET_FRAMES)
-	var src := Rect2(fw * frame, 0.0, fw, float(_planet_ok.get_height()))
+	var rows := int(ceil(float(PLANET_FRAMES) / float(PLANET_COLS)))
+	var fw := float(_planet_ok.get_width()) / float(PLANET_COLS)
+	var fh := float(_planet_ok.get_height()) / float(rows)
+	var src := Rect2(fw * float(frame % PLANET_COLS), fh * float(frame / PLANET_COLS), fw, fh)
 	draw_texture_rect_region(_planet_ok, rect, src)
 	if _planet_bad != null and pollution > 0.0:
 		draw_texture_rect_region(_planet_bad, rect, src, Color(1, 1, 1, clampf(pollution / 0.5, 0.0, 1.0)))
@@ -93,9 +96,10 @@ func _draw_planet() -> void:
 
 func _draw_belt() -> void:
 	# Belt body with two rails
-	draw_arc(center, radius, 0.0, TAU, 180, Color(0.12, 0.14, 0.19, 1.0), 22.0, true)
-	draw_arc(center, radius - 11.0, 0.0, TAU, 180, Color(0.32, 0.38, 0.5, 1.0), 2.5, true)
-	draw_arc(center, radius + 11.0, 0.0, TAU, 180, Color(0.32, 0.38, 0.5, 1.0), 2.5, true)
+	draw_arc(center, radius, 0.0, TAU, 180, Color(0.0, 0.0, 0.0, 0.25), 30.0, true)
+	draw_arc(center, radius, 0.0, TAU, 180, Color(0.13, 0.17, 0.25, 0.92), 22.0, true)
+	draw_arc(center, radius - 10.0, 0.0, TAU, 180, Color(0.55, 0.68, 0.82, 0.35), 2.0, true)
+	draw_arc(center, radius + 10.0, 0.0, TAU, 180, Color(0.55, 0.68, 0.82, 0.35), 2.0, true)
 
 	# Chevrons moving clockwise, tinted toward the next station's color.
 	var n := 60
