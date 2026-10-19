@@ -11,6 +11,9 @@ var planet_tex: Texture2D       # sheet the shards are cut from
 var planet_src: Rect2           # current frame in that sheet (pixels)
 var planet_size: float = 260.0  # on-screen size of the frame rect
 var disk_frac: float = 0.4      # planet radius / frame size
+var equirect: bool = false      # planet_tex is a 2:1 world map (real-time Earth)
+var earth_rot: float = 0.0
+var earth_tilt: float = 0.0
 
 var _t: float = 0.0
 var _shards: Array = []   # {pts, uvs, pos, vel, rot, spin}
@@ -75,6 +78,16 @@ func _build_shards() -> void:
 func _uv(p: Vector2) -> Vector2:
 	if planet_tex == null:
 		return Vector2.ZERO
+	if equirect:
+		var q := p / (planet_size * disk_frac)
+		if q.length() > 0.999:
+			q = q.normalized() * 0.999
+		var n := Vector3(q.x, -q.y, sqrt(1.0 - q.length_squared()))
+		var c := cos(earth_tilt)
+		var s := sin(earth_tilt)
+		var nt := Vector3(n.x, c * n.y - s * n.z, s * n.y + c * n.z)
+		var lon := atan2(nt.x, nt.z) + earth_rot
+		return Vector2(fposmod(lon / TAU + 0.5, 1.0), 0.5 - asin(clampf(nt.y, -1.0, 1.0)) / PI)
 	var f := (p / planet_size) + Vector2(0.5, 0.5)
 	var px := planet_src.position + f * planet_src.size
 	return px / Vector2(planet_tex.get_size())

@@ -516,6 +516,9 @@ func _explode_planet() -> void:
 	ex.planet_tex = info[0]
 	ex.planet_src = info[1]
 	ex.planet_size = info[2]
+	ex.equirect = info[3]
+	ex.earth_rot = info[4]
+	ex.earth_tilt = info[5]
 	ex.position = center
 	add_child(ex)
 	ring.planet_hidden = true

@@ -13,6 +13,10 @@ const PLANET_FIRE := "res://art/planeta_dega.png"
 const PLANET_FRAMES := 48
 const PLANET_COLS := 12   # frames are packed in a grid (12 per row)
 const PLANET_FPS := 6.0
+# Real-time Earth (used when the shader is present; sprite sheets are the fallback)
+const EARTH_DIR := "res://art/zeme/"
+const EARTH_SPIN := 0.22        # radians per second
+const EARTH_TILT := 0.32
 
 var center: Vector2 = Vector2.ZERO
 var radius: float = 200.0
@@ -33,6 +37,11 @@ var _planet_ok: Texture2D
 var _planet_bad: Texture2D
 var _planet_fire: Texture2D
 var _time: float = 0.0
+var _pview: PlanetView
+var _pmat: ShaderMaterial
+var earth_rot: float = 0.0
+var _cloud_rot: float = 0.0
+var _earth_tex := {}
 
 func _ready() -> void:
 	z_index = -1
@@ -42,12 +51,41 @@ func _ready() -> void:
 		_planet_bad = load(PLANET_BAD)
 	if ResourceLoader.exists(PLANET_FIRE):
 		_planet_fire = load(PLANET_FIRE)
+	_setup_earth()
+
+func _setup_earth() -> void:
+	if not ResourceLoader.exists(EARTH_DIR + "planeta.gdshader"):
+		return
+	_pmat = ShaderMaterial.new()
+	_pmat.shader = load(EARTH_DIR + "planeta.gdshader")
+	var maps := {"tex_ok": "zeme.jpg", "tex_bad": "zeme_tarsa.jpg", "tex_fire": "zeme_dega.jpg",
+		"tex_lava": "zeme_lava.jpg", "tex_water": "zeme_vanduo.jpg", "tex_clouds": "debesys.jpg",
+		"tex_night": "zeme_naktis.jpg"}
+	for k in maps:
+		var path: String = EARTH_DIR + maps[k]
+		if ResourceLoader.exists(path):
+			var t: Texture2D = load(path)
+			_earth_tex[k] = t
+			_pmat.set_shader_parameter(k, t)
+	_pmat.set_shader_parameter("tilt", EARTH_TILT)
+	_pview = PlanetView.new()
+	_pview.material = _pmat
+	add_child(_pview)
 
 func _process(delta: float) -> void:
 	if moving:
 		_belt_offset = fmod(_belt_offset + belt_speed * delta * Station.sim_speed, TAU)
 	_time += delta
 	_planet_anim = fmod(_planet_anim + delta * PLANET_FPS, float(PLANET_FRAMES))
+	if _pview != null:
+		earth_rot = fmod(earth_rot + delta * EARTH_SPIN, TAU)
+		_cloud_rot = fmod(_cloud_rot + delta * 0.03, TAU)
+		_pview.position = center
+		_pview.size = radius * PLANET_SIZE_K
+		_pview.visible = not planet_hidden
+		_pmat.set_shader_parameter("rot", earth_rot)
+		_pmat.set_shader_parameter("cloud_rot", _cloud_rot)
+		_pmat.set_shader_parameter("pollution", pollution)
 	queue_redraw()
 
 ## Base angle (radians) of station `i`. Station 0 sits at the top and the ring
@@ -71,6 +109,13 @@ const PLANET_SIZE_K := 1.22
 
 ## [texture, source rect, on-screen size] of the planet as it looks right now.
 func planet_frame_info() -> Array:
+	if _pview != null:
+		var key := "tex_ok"
+		if pollution > 0.6:
+			key = "tex_fire"
+		elif pollution > 0.25:
+			key = "tex_bad"
+		return [_earth_tex.get(key), Rect2(), radius * PLANET_SIZE_K, true, earth_rot, EARTH_TILT]
 	var tex := _planet_ok
 	if pollution > 0.6 and _planet_fire != null:
 		tex = _planet_fire
@@ -82,12 +127,15 @@ func planet_frame_info() -> Array:
 	var rows := int(ceil(float(PLANET_FRAMES) / float(PLANET_COLS)))
 	var fw := float(tex.get_width()) / float(PLANET_COLS)
 	var fh := float(tex.get_height()) / float(rows)
-	return [tex, Rect2(fw * float(frame % PLANET_COLS), fh * float(frame / PLANET_COLS), fw, fh), radius * PLANET_SIZE_K]
+	return [tex, Rect2(fw * float(frame % PLANET_COLS), fh * float(frame / PLANET_COLS), fw, fh), radius * PLANET_SIZE_K, false, 0.0, 0.0]
 
 func _draw_planet() -> void:
-	if _planet_ok == null or planet_hidden:
+	if planet_hidden or (_planet_ok == null and _pview == null):
 		return
 	var sz := radius * PLANET_SIZE_K
+	if _pview != null:
+		_draw_smog(sz)
+		return
 	var rect := Rect2(center - Vector2(sz, sz) * 0.5, Vector2(sz, sz))
 	var frame := int(_planet_anim) % PLANET_FRAMES
 	var rows := int(ceil(float(PLANET_FRAMES) / float(PLANET_COLS)))
@@ -99,6 +147,9 @@ func _draw_planet() -> void:
 		draw_texture_rect_region(_planet_bad, rect, src, Color(1, 1, 1, clampf(pollution / 0.5, 0.0, 1.0)))
 	if _planet_fire != null and pollution > 0.5:
 		draw_texture_rect_region(_planet_fire, rect, src, Color(1, 1, 1, clampf((pollution - 0.5) / 0.4, 0.0, 1.0)))
+	_draw_smog(sz)
+
+func _draw_smog(sz: float) -> void:
 	# Smog clouds drifting up from the planet when polluted
 	if pollution > 0.3:
 		var a := clampf((pollution - 0.3) / 0.5, 0.0, 1.0)
