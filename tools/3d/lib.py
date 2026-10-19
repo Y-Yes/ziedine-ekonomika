@@ -258,8 +258,11 @@ def render_frames(update, n, out_dir, name):
     os.makedirs(out_dir, exist_ok=True)
     paths = []
     for i in range(n):
-        update(i / n)
         p = os.path.join(out_dir, f"{name}_{i:02d}.png")
+        if os.environ.get('SKIP_EXISTING') and os.path.exists(p):
+            paths.append(p)
+            continue
+        update(i / n)
         sc.render.filepath = p
         bpy.ops.render.render(write_still=True)
         paths.append(p)

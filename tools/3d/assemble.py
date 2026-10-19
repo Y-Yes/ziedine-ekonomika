@@ -16,6 +16,17 @@ def load(p, size=None):
     return im
 
 
+def tiles():
+    S = 256
+    F2 = '/home/claude/gen/b3d/frames2'
+    for n in ['1_naudotojas', '2_surinkimas', '3_rusiavimas', '4_perdirbimas', '5_gamykla', '6_parduotuve']:
+        sh = Image.new('RGBA', (S * 24, S))
+        for i in range(24):
+            sh.paste(load(f'{F2}/{n}_{i:02d}.png', S), (i * S, 0))
+        sh.save(f'{ART}/{n}.png', optimize=True)
+    load(f'{F2}/savartynas_00.png', S).save(f'{ART}/savartynas.png')
+
+
 def stations():
     S = 224
     for n in ['1_naudotojas', '2_surinkimas', '3_rusiavimas', '4_perdirbimas', '5_gamykla', '6_parduotuve']:

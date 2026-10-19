@@ -24,6 +24,8 @@ var belt_speed: float = TAU / 9.0
 var pollution: float = 0.0
 ## Belt moves only while the game is running.
 var moving: bool = false
+## Set when the planet has exploded (lost game).
+var planet_hidden: bool = false
 
 var _belt_offset: float = 0.0
 var _planet_anim: float = 0.0
@@ -65,10 +67,27 @@ func _draw() -> void:
 	_draw_planet()
 	_draw_belt()
 
+const PLANET_SIZE_K := 1.22
+
+## [texture, source rect, on-screen size] of the planet as it looks right now.
+func planet_frame_info() -> Array:
+	var tex := _planet_ok
+	if pollution > 0.6 and _planet_fire != null:
+		tex = _planet_fire
+	elif pollution > 0.25 and _planet_bad != null:
+		tex = _planet_bad
+	if tex == null:
+		return [null, Rect2(), radius * PLANET_SIZE_K]
+	var frame := int(_planet_anim) % PLANET_FRAMES
+	var rows := int(ceil(float(PLANET_FRAMES) / float(PLANET_COLS)))
+	var fw := float(tex.get_width()) / float(PLANET_COLS)
+	var fh := float(tex.get_height()) / float(rows)
+	return [tex, Rect2(fw * float(frame % PLANET_COLS), fh * float(frame / PLANET_COLS), fw, fh), radius * PLANET_SIZE_K]
+
 func _draw_planet() -> void:
-	if _planet_ok == null:
+	if _planet_ok == null or planet_hidden:
 		return
-	var sz := radius * 1.22
+	var sz := radius * PLANET_SIZE_K
 	var rect := Rect2(center - Vector2(sz, sz) * 0.5, Vector2(sz, sz))
 	var frame := int(_planet_anim) % PLANET_FRAMES
 	var rows := int(ceil(float(PLANET_FRAMES) / float(PLANET_COLS)))
@@ -95,25 +114,34 @@ func _draw_planet() -> void:
 			draw_circle(p, cr, col)
 
 func _draw_belt() -> void:
-	# Belt body with two rails
-	draw_arc(center, radius, 0.0, TAU, 180, Color(0.0, 0.0, 0.0, 0.25), 30.0, true)
-	draw_arc(center, radius, 0.0, TAU, 180, Color(0.13, 0.17, 0.25, 0.92), 22.0, true)
-	draw_arc(center, radius - 10.0, 0.0, TAU, 180, Color(0.55, 0.68, 0.82, 0.35), 2.0, true)
-	draw_arc(center, radius + 10.0, 0.0, TAU, 180, Color(0.55, 0.68, 0.82, 0.35), 2.0, true)
-
-	# Chevrons moving clockwise, tinted toward the next station's color.
-	var n := 60
+	# Glowing energy ring (soft halo + bright core line)
+	var glow := Color(0.35, 0.8, 1.0)
+	draw_arc(center, radius, 0.0, TAU, 200, Color(glow, 0.06), 30.0, true)
+	draw_arc(center, radius, 0.0, TAU, 200, Color(glow, 0.12), 14.0, true)
+	draw_arc(center, radius, 0.0, TAU, 200, Color(glow, 0.35), 5.0, true)
+	draw_arc(center, radius, 0.0, TAU, 200, Color(0.85, 0.97, 1.0, 0.85), 1.6, true)
+	# faint dotted inner orbit, slowly turning the other way
+	var dots := 90
+	var r2 := radius * 0.8
+	for k in dots:
+		var a := TAU * float(k) / float(dots) - _belt_offset * 0.35
+		draw_circle(center + Vector2(cos(a), sin(a)) * r2, 1.1, Color(glow, 0.3))
+	# Flowing chevrons along the ring (clockwise)
+	var n := 48
 	for k in n:
 		var a := TAU * float(k) / float(n) + _belt_offset
-		var rel := fposmod(a - base_angle(0), TAU) / step
-		var i := int(rel)
-		var f := rel - float(i)
-		var col := Pipeline.color_of(i).lerp(Pipeline.color_of(i + 1), f)
-		col.a = 0.55
-		var dir := Vector2(-sin(a), cos(a))      # tangent (clockwise)
-		var nrm := Vector2(cos(a), sin(a))       # outward normal
+		var dir := Vector2(-sin(a), cos(a))
+		var nrm := Vector2(cos(a), sin(a))
 		var p := center + nrm * radius
-		var tip := p + dir * 3.5
-		draw_polyline(PackedVector2Array([
-			p - dir * 3.0 + nrm * 6.0, tip, p - dir * 3.0 - nrm * 6.0,
-		]), col, 2.5, true)
+		var pulse := 0.35 + 0.35 * (0.5 + 0.5 * sin(a * 3.0 - _time * 2.0))
+		draw_polyline(PackedVector2Array([p - dir * 3.0 + nrm * 5.0, p + dir * 2.5, p - dir * 3.0 - nrm * 5.0]),
+			Color(0.75, 0.93, 1.0, pulse), 1.8, true)
+	# Big arrow heads half way between stations
+	for i in Pipeline.count():
+		var a := base_angle(i) + step * 0.5
+		var dir := Vector2(-sin(a), cos(a))
+		var nrm := Vector2(cos(a), sin(a))
+		var p := center + nrm * radius
+		var col := Pipeline.color_of(i + 1).lerp(Color.WHITE, 0.35)
+		draw_colored_polygon(PackedVector2Array([p + dir * 9.0, p - dir * 5.0 + nrm * 8.0, p - dir * 2.0, p - dir * 5.0 - nrm * 8.0]),
+			Color(col, 0.9))

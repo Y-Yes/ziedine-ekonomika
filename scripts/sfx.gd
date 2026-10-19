@@ -8,13 +8,13 @@ extends Node
 const DIR := "res://art/sfx/"
 const NAMES := ["click", "work", "coin", "sale", "upgrade", "error", "bonus_spawn", "bonus_get",
 	"landfill", "fire", "extinguish", "flood", "event", "year", "card", "sort_ok", "sort_bad",
-	"sort_open", "whoosh", "confetti"]
+	"sort_open", "whoosh", "confetti", "sprogimas"]
 const POOL := 10
 const MUSIC_DB := -15.0
 
 # Per-sound volume (dB) and minimum gap between repeats (s).
 const VOL := {"sale": -10.0, "coin": -16.0, "work": -4.0, "landfill": -4.0, "click": -8.0,
-	"fire": -8.0, "flood": -6.0, "confetti": -6.0}
+	"fire": -8.0, "flood": -6.0, "confetti": -6.0, "sprogimas": -1.0}
 const GAP := {"coin": 0.12, "sale": 0.15, "work": 0.04, "landfill": 0.1, "click": 0.03}
 
 static var inst: Sfx

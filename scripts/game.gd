@@ -169,6 +169,8 @@ var _income_log: Array = []
 var _shake: float = 0.0
 var _tut_bonus: Bonus = null
 var catastrophe: float = 0.0
+var exploding: bool = false
+const EXPLOSION_TIME := 3.0
 var heat_left: float = 0.0
 var lost_reason: String = ""
 
@@ -306,11 +308,18 @@ func start_game(diff_index: int = -1, with_tutorial: bool = false) -> void:
 	if hud.tutorial != null and is_instance_valid(hud.tutorial):
 		hud.tutorial.queue_free()
 
-	for st in stations:
+	for i in stations.size():
+		var st := stations[i]
 		st.clear_buffer()
 		st.reset_levels()
 		st.selected = false
 		st.flash = 0.0
+		# undo the explosion of a previous lost game
+		st.position = ring.station_position(i)
+		st.rotation = 0.0
+		st.modulate = Color.WHITE
+	ring.planet_hidden = false
+	ring.modulate = Color.WHITE
 	landfill.reset()
 
 	money = float(diff["money"])
@@ -486,10 +495,42 @@ func _check_lose(delta: float) -> void:
 		_lose("bankrupt")
 
 func _lose(reason: String) -> void:
+	if exploding:
+		return
 	lost_reason = reason
-	Sfx.play("flood", 0.0, 0.7)
-	shake(1.0)
+	exploding = true
+	running = false
+	hud.alert_panel.visible = false
+	_explode_planet()
+	await get_tree().create_timer(EXPLOSION_TIME).timeout
+	exploding = false
 	_finish_game({"met": false, "lost": true})
+
+## Losing blows the planet apart: shards, shock wave, stations thrown away.
+func _explode_planet() -> void:
+	Sfx.play("sprogimas", 0.0, 1.0)
+	Sfx.play("fire", 0.0, 0.6)
+	shake(2.6)
+	var info := ring.planet_frame_info()
+	var ex := Explosion.new()
+	ex.planet_tex = info[0]
+	ex.planet_src = info[1]
+	ex.planet_size = info[2]
+	ex.position = center
+	add_child(ex)
+	ring.planet_hidden = true
+	for t in tokens:
+		if is_instance_valid(t):
+			var tt := create_tween()
+			tt.tween_property(t, "modulate:a", 0.0, 0.3)
+	var rt := create_tween()
+	rt.tween_property(ring, "modulate:a", 0.0, 0.6).set_delay(0.15)
+	for st in stations:
+		var away: Vector2 = (st.position - center) * 3.2 + center
+		var tw := create_tween().set_parallel(true)
+		tw.tween_property(st, "position", away, 2.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT).set_delay(0.05)
+		tw.tween_property(st, "rotation", randf_range(-1.6, 1.6), 2.4).set_delay(0.05)
+		tw.tween_property(st, "modulate:a", 0.0, 1.2).set_delay(1.3)
 
 ## Final score combines money, planet health and circularity (× difficulty).
 func final_score() -> int:

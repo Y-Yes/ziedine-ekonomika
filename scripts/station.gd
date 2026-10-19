@@ -64,9 +64,11 @@ const ART := [
 ]
 const ANIM_FRAMES := 24
 ## Island art size relative to base_radius, and where its ground ellipse sits.
-const ART_SCALE := 2.9
-const HALO_Y := 0.1
-const HALO_SQUASH := 0.55
+const ART_SCALE := 3.3
+const ART_LIFT := 0.06     # art drawn this much (x art size) above the station centre
+const TILE_HW := 0.437     # half width of the tile's top diamond (x art size)
+const TILE_HH := 0.232     # half height of that diamond
+const HALO_SQUASH := 0.53
 const IDLE_FPS := 7.0      # animation speed while the station is empty
 const BUSY_FPS := 16.0     # animation speed while processing (level 1)
 
@@ -282,34 +284,42 @@ func _draw() -> void:
 	var k := 1.0 - 0.1 * sin(punch * PI)   # squish on click
 	var r := base_radius * k
 
-	# Ground halo under the floating island: an ellipse that doubles as the
-	# progress ring (bright arc = progress towards releasing the next item).
+	# Glowing outline around the square tile (drawn behind it). It doubles as
+	# the progress indicator: a bright line runs round as the next item is made.
 	var art := r * ART_SCALE
 	var busy := not buffer.is_empty()
-	var hc := Vector2(0.0, art * HALO_Y)
-	draw_set_transform(hc, 0.0, Vector2(1.0, HALO_SQUASH))
-	var hr := art * 0.47
+	var isl_bob := sin(Time.get_ticks_msec() / 900.0 + float(index) * 1.3) * 1.5
+	var hc := Vector2(0.0, -art * ART_LIFT + isl_bob)
+	var hw := art * TILE_HW * 1.1
+	var hh := art * TILE_HH * 1.1
+	var hr := hw   # used by the fire glow below
+	var dia := PackedVector2Array([hc + Vector2(0, -hh), hc + Vector2(hw, 0), hc + Vector2(0, hh), hc + Vector2(-hw, 0), hc + Vector2(0, -hh)])
 	if upgrade_glow > 0.0:
-		draw_circle(Vector2.ZERO, hr + 16.0 * upgrade_glow, Color(accent, 0.3 * upgrade_glow))
-	draw_circle(Vector2.ZERO, hr, Color(0.02, 0.04, 0.08, 0.35))
-	draw_arc(Vector2.ZERO, hr, 0.0, TAU, 64, Color(accent, 0.55 if not busy else 0.35), 3.0, true)
+		var g := 1.0 + 0.25 * upgrade_glow
+		var big := PackedVector2Array()
+		for q in dia:
+			big.append(hc + (q - hc) * g)
+		draw_colored_polygon(big, Color(accent, 0.3 * upgrade_glow))
+	draw_polyline(dia, Color(accent, 0.25), 7.0, true)
+	draw_polyline(dia, Color(accent, 0.7 if not busy else 0.45), 2.0, true)
 	if busy:
 		var frac := clampf(_timer * effective_rate(), 0.0, 1.0)
 		if frac > 0.01:
-			draw_arc(Vector2.ZERO, hr, -PI * 0.5, -PI * 0.5 + TAU * frac, 64, accent.lightened(0.3), 5.0, true)
+			draw_polyline(_diamond_part(dia, frac), accent.lightened(0.45), 4.0, true)
 	if selected:
-		draw_arc(Vector2.ZERO, hr + 7.0, 0.0, TAU, 64, Color(1, 1, 1, 0.9), 3.0, true)
+		var sel := PackedVector2Array()
+		for q in dia:
+			sel.append(hc + (q - hc) * 1.12)
+		draw_polyline(sel, Color(1, 1, 1, 0.9), 2.5, true)
 	if punch > 0.0:
-		draw_arc(Vector2.ZERO, hr + 3.0, 0.0, TAU, 64, Color(1, 1, 1, punch * 0.8), 3.0, true)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_polyline(dia, Color(1, 1, 1, punch * 0.8), 4.0, true)
 
 	# Animated diorama (floating island). Bobs gently.
-	var isl_bob := sin(Time.get_ticks_msec() / 900.0 + float(index) * 1.3) * 1.5
 	if _sheet != null:
 		var fw := float(_sheet.get_width()) / float(ANIM_FRAMES)
 		var frame := int(_anim) % ANIM_FRAMES
 		draw_texture_rect_region(_sheet,
-			Rect2(Vector2(-art * 0.5, -art * 0.5 - art * 0.06 + isl_bob), Vector2(art, art)),
+			Rect2(Vector2(-art * 0.5, -art * 0.5 - art * ART_LIFT + isl_bob), Vector2(art, art)),
 			Rect2(fw * frame, 0.0, fw, float(_sheet.get_height())))
 
 	# Fire (disaster): flickering flames over the station
@@ -336,8 +346,8 @@ func _draw() -> void:
 		var font0 := ThemeDB.fallback_font
 		var ft := Loc.t("GESINK! %d") % int(ceil(fire))
 		var fwid := font0.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13).x
-		draw_string_outline(font0, Vector2(-fwid * 0.5, -base_radius - 34.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, 4, Color(0, 0, 0, 0.8))
-		draw_string(font0, Vector2(-fwid * 0.5, -base_radius - 34.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(1.0, 0.6, 0.3))
+		draw_string_outline(font0, Vector2(-fwid * 0.5, -_top_r() - 34.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, 4, Color(0, 0, 0, 0.8))
+		draw_string(font0, Vector2(-fwid * 0.5, -_top_r() - 34.0), ft, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(1.0, 0.6, 0.3))
 
 	# Strike: grey overlay + sign
 	if strike > 0.0:
@@ -351,8 +361,8 @@ func _draw() -> void:
 		draw_string(fs, Vector2(-w1 * 0.5, 5.0), t1, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, Color.WHITE)
 		var t2 := Loc.t("Spausk: -€%d (%d s)") % [strike_cost, int(ceil(strike))]
 		var w2 := fs.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12).x
-		draw_string_outline(fs, Vector2(-w2 * 0.5, -base_radius - 34.0), t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, 4, Color(0, 0, 0, 0.85))
-		draw_string(fs, Vector2(-w2 * 0.5, -base_radius - 34.0), t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, Color(1.0, 0.7, 0.6))
+		draw_string_outline(fs, Vector2(-w2 * 0.5, -_top_r() - 34.0), t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, 4, Color(0, 0, 0, 0.85))
+		draw_string(fs, Vector2(-w2 * 0.5, -_top_r() - 34.0), t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, Color(1.0, 0.7, 0.6))
 	# Heat wave tint
 	if hazard_mult < 1.0:
 		draw_arc(Vector2.ZERO, r - 3.0, 0.0, TAU, 48, Color(1.0, 0.55, 0.15, 0.6), 3.0, true)
@@ -363,7 +373,7 @@ func _draw() -> void:
 		var bonus := "+%d %%" % int(round(SCALE_BONUS * 100.0 * float(cap_level - 1)))
 		var bw := fc.get_string_size(bonus, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11).x + 10.0
 		var row_w0 := float(mini(10, capacity)) * 9.0
-		var cp := Vector2(row_w0 * 0.5 + 34.0 + bw * 0.5, -base_radius - 13.0)
+		var cp := Vector2(row_w0 * 0.5 + 34.0 + bw * 0.5, -_top_r() - 13.0)
 		draw_rect(Rect2(cp - Vector2(bw * 0.5, 8.0), Vector2(bw, 16.0)), Color(0.2, 0.6, 0.32, 0.95))
 		draw_string(fc, cp + Vector2(-bw * 0.5 + 5.0, 4.0), bonus, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11, Color.WHITE)
 
@@ -410,7 +420,7 @@ func _draw() -> void:
 		var col := i % per_row
 		var in_row := mini(per_row, capacity - row * per_row)
 		var x := (float(col) - float(in_row - 1) * 0.5) * (bw2 + gap) - bw2 * 0.5
-		var y := -base_radius - 18.0 - float(row) * (bw2 + 3.0)
+		var y := -_top_r() - 18.0 - float(row) * (bw2 + 3.0)
 		var sc := Vector2(x + bw2 * 0.5, y + bw2 * 0.5)
 		if i < n:
 			draw_circle(sc + Vector2(0, 1), bw2 * 0.55, Color(0, 0, 0, 0.35))
@@ -422,7 +432,7 @@ func _draw() -> void:
 	# half-full marker (economies of scale threshold)
 	if cap_level > 1:
 		var hx := (float(mini(per_row, capacity)) * 0.5) * (bw2 + gap)
-		var hy := -base_radius - 18.0 - float(rows - 1) * (bw2 + 3.0) - 4.0
+		var hy := -_top_r() - 18.0 - float(rows - 1) * (bw2 + 3.0) - 4.0
 		draw_line(Vector2(-hx - 2.0, hy), Vector2(hx, hy), Color(0.45, 0.9, 0.55, 0.9 if half_full else 0.35), 2.0)
 
 	var font := ThemeDB.fallback_font
@@ -435,9 +445,32 @@ func _draw() -> void:
 	elif n >= capacity - 1:
 		slot_col = Color(1.0, 0.8, 0.35)
 	var row_w := float(mini(per_row, capacity)) * (bw2 + gap)
-	draw_string(font, Vector2(row_w * 0.5 + 4.0, -base_radius - 9.0), slot_text,
+	draw_string(font, Vector2(row_w * 0.5 + 4.0, -_top_r() - 9.0), slot_text,
 		HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, slot_col)
 
 	# Name below the station
-	draw_string(font, Vector2(-base_radius, base_radius + 20.0), Pipeline.name_of(index),
+	draw_string(font, Vector2(-base_radius, base_radius * ART_SCALE * 0.36 + 12.0), Pipeline.name_of(index),
 		HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, accent.lightened(0.15))
+
+
+## First `frac` of a closed polyline (by length), for the progress outline.
+func _diamond_part(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
+	var total := 0.0
+	for i in pts.size() - 1:
+		total += pts[i].distance_to(pts[i + 1])
+	var left := total * frac
+	var out := PackedVector2Array([pts[0]])
+	for i in pts.size() - 1:
+		var d := pts[i].distance_to(pts[i + 1])
+		if left >= d:
+			out.append(pts[i + 1])
+			left -= d
+		else:
+			out.append(pts[i].lerp(pts[i + 1], left / d))
+			break
+	return out
+
+
+## Distance from the station centre to just above the tile's buildings.
+func _top_r() -> float:
+	return base_radius * ART_SCALE * 0.4

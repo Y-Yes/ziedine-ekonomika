@@ -180,15 +180,16 @@ func _build() -> void:
 	_build_pause_menu()
 
 func _style(bg: Color, border: Color, radius: int = 10, bw: int = 2) -> StyleBoxFlat:
+	# Sleek "glass" panels: translucent, cool-tinted, thin light border, soft shadow.
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.border_color = border
-	sb.set_border_width_all(bw)
-	# chunky bottom edge + soft drop shadow (tactile, game-like panels)
-	sb.border_width_bottom = bw + 2
-	sb.set_corner_radius_all(radius)
-	sb.shadow_color = Color(0.0, 0.0, 0.0, 0.35)
-	sb.shadow_size = 6
+	var b := bg.lerp(Color(0.05, 0.09, 0.14), 0.25)
+	b.a = minf(bg.a, 0.86)
+	sb.bg_color = b
+	sb.border_color = Color(border.lerp(Color(0.75, 0.9, 1.0), 0.25), border.a * 0.85)
+	sb.set_border_width_all(maxi(1, bw - 1) if bw <= 2 else bw)
+	sb.set_corner_radius_all(mini(radius, 10))
+	sb.shadow_color = Color(0.0, 0.0, 0.0, 0.4)
+	sb.shadow_size = 8
 	sb.shadow_offset = Vector2(0, 3)
 	sb.anti_aliasing = true
 	sb.content_margin_left = 12
