@@ -105,6 +105,17 @@ var tut_check: CheckBox
 var best_label: Label
 var selected_diff: int = 1
 const SECRET_DIFF := 3
+var intro_box: VBoxContainer
+
+## "How to play" cards shown on first launch (and from the start screen).
+const INTRO_CARDS := [
+	["1. TIKSLAS", "Vadovauji 6 įmonėms, kurios sudaro žiedinės ekonomikos ratą. Žaidimas trunka 10 metų (vieni metai – apie 1 minutę). Uždirbk kuo daugiau, bet saugok planetą: geriausias rezultatas – turtinga IR švari įmonė.", Color(0.45, 0.85, 1.0)],
+	["2. KAIP JUDA DAIKTAI", "Daiktas keliauja ratu: Naudotojas → Surinkimas → Rūšiavimas → Perdirbimas → Gamykla → Parduotuvė → ir vėl pas Naudotoją. Kiekviena stotis prideda vertės, o pardavus produktą gauni pinigų.", Color(0.55, 1.0, 0.6)],
+	["3. KĄ TU DARAI", "Spausk stotį – ji padirba greičiau (kuo daugiau spaudai, tuo greičiau). Pirk patobulinimus: greitį, sandėlį ir vertę. Gaudyk skraidančias € monetas, o mišrias atliekas rūšiuok – tempk daiktą į tinkamą konteinerį.", Color(1.0, 0.85, 0.4)],
+	["4. PAVOJAI", "Kai stoties sandėlis prisipildo, daiktai iškrenta į sąvartyną ir didėja tarša. Tarša mažina kainas ir sukelia nelaimes: gaisrus, potvynius, streikus. Jei tarša 100 % laikosi 15 s – planeta sprogsta. Skola didesnė nei €150 – bankrotas.", Color(1.0, 0.5, 0.4)],
+	["5. EKONOMIKA", "Kasmet ES tikrina, ar pasiekei žiedinumo tikslą – jei ne, moki baudą. Metų pabaigoje renkiesi vieną iš trijų investicijų, o kitų atsisakai (alternatyvieji kaštai). Nauja žaliava (Tarpas) – greita, bet teršia: tai linijinė ekonomika.", Color(0.75, 0.6, 1.0)],
+	["6. VALDYMAS", "Pelė – spaudyti stotis ir pirkti patobulinimus.\nTarpas – nupirkti naują žaliavą.\nV – išvalyti aplinką.\nEsc – meniu, garsas, sąvokų žodynas.\nF11 – pilnas ekranas.", Color(0.7, 0.8, 0.92)],
+]
 var secret_label: Label
 var secret_btn: Button
 
@@ -462,7 +473,8 @@ func _switch_language() -> void:
 ## Rebuild the whole interface (used after switching the language).
 func rebuild() -> void:
 	var was_pause := pause_layer != null and pause_layer.visible
-	var was_start := overlay != null and overlay.visible and start_box.visible
+	var was_start := overlay != null and overlay.visible and (start_box.visible or intro_box.visible)
+	var was_intro := overlay != null and overlay.visible and intro_box.visible
 	var was_final := overlay != null and overlay.visible and final_box.visible
 	if tutorial != null and is_instance_valid(tutorial):
 		tutorial.finish()
@@ -476,7 +488,9 @@ func rebuild() -> void:
 	_build()
 	relayout(get_viewport().get_visible_rect().size)
 	refresh()
-	if was_start:
+	if was_intro:
+		show_intro()
+	elif was_start:
 		show_start_overlay()
 	elif was_final:
 		overlay.visible = true
@@ -867,6 +881,8 @@ func _build_overlay() -> void:
 	var holder := VBoxContainer.new()
 	cc.add_child(holder)
 
+	_build_intro(holder)
+
 	# Start screen
 	start_box = VBoxContainer.new()
 	start_box.add_theme_constant_override("separation", 12)
@@ -932,7 +948,17 @@ func _build_overlay() -> void:
 	lang_btn.add_theme_font_size_override("font_size", 13)
 	_button_styles(lang_btn, Color(0.5, 0.55, 0.7))
 	lang_btn.pressed.connect(func(): Sfx.play("click"); _switch_language())
-	cc5.add_child(lang_btn)
+	var row5 := HBoxContainer.new()
+	row5.add_theme_constant_override("separation", 10)
+	cc5.add_child(row5)
+	var help_btn := Button.new()
+	help_btn.text = Loc.t("Kaip žaisti?")
+	help_btn.custom_minimum_size = Vector2(140, 32)
+	help_btn.add_theme_font_size_override("font_size", 13)
+	_button_styles(help_btn, Color(0.35, 0.7, 0.95))
+	help_btn.pressed.connect(func(): Sfx.play("click"); show_intro())
+	row5.add_child(help_btn)
+	row5.add_child(lang_btn)
 	_build_secret_button()
 	_select_diff(int(Settings.get_value("difficulty", 1)))
 
@@ -979,6 +1005,63 @@ func _build_overlay() -> void:
 	again.pressed.connect(func(): show_start_overlay())
 	cc4.add_child(again)
 
+func _build_intro(holder: Control) -> void:
+	intro_box = VBoxContainer.new()
+	intro_box.add_theme_constant_override("separation", 10)
+	intro_box.visible = false
+	holder.add_child(intro_box)
+	var t := _center_label(intro_box, 34, Color(0.85, 0.95, 1.0))
+	t.add_theme_font_override("font", bold)
+	t.text = Loc.t("Kaip žaisti?")
+	var sub := _center_label(intro_box, 15, Color(0.65, 0.9, 0.7))
+	sub.text = Loc.t("Žiedinė ekonomika – daiktai ne išmetami, o vėl ir vėl panaudojami. Štai kaip tai veikia žaidime:")
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 10)
+	intro_box.add_child(grid)
+	for card in INTRO_CARDS:
+		var c: Color = card[2]
+		var p := PanelContainer.new()
+		p.add_theme_stylebox_override("panel", _style(Color(0.08, 0.1, 0.15, 0.95), Color(c, 0.55), 10, 1))
+		p.custom_minimum_size = Vector2(420, 128)
+		grid.add_child(p)
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 4)
+		p.add_child(v)
+		var hd := Label.new()
+		hd.text = Loc.t(str(card[0]))
+		hd.add_theme_font_override("font", bold)
+		hd.add_theme_font_size_override("font_size", 15)
+		hd.add_theme_color_override("font_color", c)
+		v.add_child(hd)
+		var body := Label.new()
+		body.text = Loc.t(str(card[1]))
+		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.custom_minimum_size = Vector2(396, 0)
+		body.add_theme_font_size_override("font_size", 13)
+		body.add_theme_color_override("font_color", Color(0.86, 0.9, 0.96))
+		v.add_child(body)
+	var cc := CenterContainer.new()
+	intro_box.add_child(cc)
+	var ok := Button.new()
+	ok.custom_minimum_size = Vector2(300, 52)
+	ok.add_theme_font_size_override("font_size", 20)
+	ok.add_theme_font_override("font", bold)
+	ok.text = Loc.t("Supratau – pirmyn!")
+	_button_styles(ok, Color(0.35, 0.8, 0.5))
+	ok.pressed.connect(func():
+		Sfx.play("click")
+		Settings.set_value("intro_seen", true)
+		show_start_overlay())
+	cc.add_child(ok)
+
+func show_intro() -> void:
+	overlay.visible = true
+	intro_box.visible = true
+	start_box.visible = false
+	final_box.visible = false
+
 ## Invisible button in the bottom-left corner of the start screen that
 ## unlocks the secret "Ekstremalus" difficulty.
 func _build_secret_button() -> void:
@@ -997,8 +1080,33 @@ func _build_secret_button() -> void:
 			Sfx.play("upgrade", 0.0, 0.7)
 			Sfx.play("whoosh")
 			_select_diff(SECRET_DIFF))
+	sb.draw.connect(_draw_secret_glint)
 	overlay.add_child(sb)
 	secret_btn = sb
+
+## After "Sunkus" is beaten the hidden corner twinkles now and then – a hint.
+func _draw_secret_glint() -> void:
+	if not bool(Settings.get_value("hard_beaten", false)) or not start_box.visible:
+		return
+	var t := Time.get_ticks_msec() / 1000.0
+	var c := Vector2(20, secret_btn.size.y - 20)
+	# soft breathing glow
+	var breath := 0.5 + 0.5 * sin(t * 1.6)
+	secret_btn.draw_circle(c, 13.0, Color(1.0, 0.85, 0.4, 0.05 + 0.06 * breath))
+	secret_btn.draw_circle(c, 6.0, Color(1.0, 0.9, 0.55, 0.06 + 0.08 * breath))
+	# a star-shaped glint flashes every ~2.5 s
+	var ph := fmod(t, 2.5) / 2.5
+	if ph < 0.35:
+		var k := sin(ph / 0.35 * PI)
+		var L := 4.0 + 12.0 * k
+		var w := 1.0 + 1.2 * k
+		var col := Color(1.0, 0.95, 0.75, 0.85 * k)
+		var rot := t * 1.5
+		for i in 4:
+			var d := Vector2.RIGHT.rotated(rot + float(i) * PI * 0.5)
+			var n := d.orthogonal()
+			secret_btn.draw_colored_polygon(PackedVector2Array([c + n * w, c + d * L, c - n * w]), col)
+		secret_btn.draw_circle(c, 2.0 + 1.5 * k, Color(1, 1, 1, 0.9 * k))
 
 func _select_diff(i: int) -> void:
 	selected_diff = clampi(i, 0, game.DIFFICULTIES.size() - 1)
@@ -1030,6 +1138,11 @@ func _on_start_pressed() -> void:
 
 func show_start_overlay() -> void:
 	overlay.visible = true
+	# A brand-new player first sees the "how to play" page.
+	if not bool(Settings.get_value("intro_seen", false)):
+		show_intro()
+		return
+	intro_box.visible = false
 	start_box.visible = true
 	final_box.visible = false
 	tut_check.button_pressed = not bool(Settings.get_value("tutorial_done", false))
@@ -1186,6 +1299,8 @@ func flash_overflow() -> void:
 # --- Per-frame refresh -----------------------------------------------------
 
 func _process(delta: float) -> void:
+	if secret_btn != null and overlay.visible:
+		secret_btn.queue_redraw()
 	_blink_t += delta
 	if panel != null and panel.visible:
 		var any := false

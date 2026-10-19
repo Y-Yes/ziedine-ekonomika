@@ -470,6 +470,9 @@ func _apply_perk(p: Dictionary) -> void:
 		st.recompute()
 
 func _finish_game(summary: Dictionary) -> void:
+	# Beating "Sunkus" (or harder) makes the secret corner start to glint.
+	if lost_reason == "" and difficulty >= 2:
+		Settings.set_value("hard_beaten", true)
 	finished = true
 	running = false
 	in_report = false
