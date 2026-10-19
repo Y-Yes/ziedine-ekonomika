@@ -67,6 +67,11 @@ const DIFFICULTIES := [
 		"growth": 0.52, "growth2": 0.02, "spawn": 1.0, "money": 25.0, "pol": 1.05, "target": 5, "fee": 1.3, "score": 1.3,
 		"haz_every": 45.0, "haz_first": 45.0, "haz_power": 1.1,
 		"haz_types": {"fire": 3, "flood": 3, "storm": 3, "heat": 2, "strike": 3}},
+	# Secret level – unlocked by an invisible button on the start screen.
+	{"title": "Ekstremalus", "desc": "Slaptas lygis", "hidden": true,
+		"growth": 0.58, "growth2": 0.024, "spawn": 0.92, "money": 20.0, "pol": 1.2, "target": 10, "fee": 1.6, "score": 1.8,
+		"haz_every": 36.0, "haz_first": 35.0, "haz_power": 1.3,
+		"haz_types": {"fire": 4, "flood": 3, "storm": 3, "heat": 3, "strike": 3}},
 ]
 
 # Market events

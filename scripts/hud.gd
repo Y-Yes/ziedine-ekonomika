@@ -104,6 +104,9 @@ var diff_btns: Array[Button] = []
 var tut_check: CheckBox
 var best_label: Label
 var selected_diff: int = 1
+const SECRET_DIFF := 3
+var secret_label: Label
+var secret_btn: Button
 
 var tutorial: Tutorial
 var sorting: Sorting
@@ -888,6 +891,8 @@ func _build_overlay() -> void:
 	start_box.add_child(dh)
 	var diffs: Array = game.DIFFICULTIES
 	for i in diffs.size():
+		if bool(diffs[i].get("hidden", false)):
+			continue
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(220, 92)
 		b.add_theme_font_size_override("font_size", 14)
@@ -896,6 +901,9 @@ func _build_overlay() -> void:
 		b.pressed.connect(func(): Sfx.play("click"); _select_diff(idx))
 		dh.add_child(b)
 		diff_btns.append(b)
+	secret_label = _center_label(start_box, 15, Color(1.0, 0.35, 0.3))
+	secret_label.add_theme_font_override("font", bold)
+	secret_label.visible = false
 	var cc2 := CenterContainer.new()
 	start_box.add_child(cc2)
 	tut_check = CheckBox.new()
@@ -925,6 +933,7 @@ func _build_overlay() -> void:
 	_button_styles(lang_btn, Color(0.5, 0.55, 0.7))
 	lang_btn.pressed.connect(func(): Sfx.play("click"); _switch_language())
 	cc5.add_child(lang_btn)
+	_build_secret_button()
 	_select_diff(int(Settings.get_value("difficulty", 1)))
 
 	# Final screen
@@ -970,8 +979,35 @@ func _build_overlay() -> void:
 	again.pressed.connect(func(): show_start_overlay())
 	cc4.add_child(again)
 
+## Invisible button in the bottom-left corner of the start screen that
+## unlocks the secret "Ekstremalus" difficulty.
+func _build_secret_button() -> void:
+	var sb := Button.new()
+	sb.flat = true
+	sb.focus_mode = Control.FOCUS_NONE
+	for s in ["normal", "hover", "pressed", "disabled", "focus"]:
+		sb.add_theme_stylebox_override(s, StyleBoxEmpty.new())
+	sb.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	sb.offset_left = 0.0
+	sb.offset_top = -48.0
+	sb.offset_right = 48.0
+	sb.offset_bottom = 0.0
+	sb.pressed.connect(func():
+		if start_box.visible:
+			Sfx.play("upgrade", 0.0, 0.7)
+			Sfx.play("whoosh")
+			_select_diff(SECRET_DIFF))
+	overlay.add_child(sb)
+	secret_btn = sb
+
 func _select_diff(i: int) -> void:
-	selected_diff = clampi(i, 0, diff_btns.size() - 1)
+	selected_diff = clampi(i, 0, game.DIFFICULTIES.size() - 1)
+	if selected_diff == SECRET_DIFF:
+		secret_label.text = Loc.t("★ SLAPTAS LYGIS: EKSTREMALUS ★") + "\n" + \
+			Loc.t("Dar daugiau atliekų, mažiau pinigų, griežčiausi ES tikslai ir nelaimės be perstojo")
+		secret_label.visible = true
+	else:
+		secret_label.visible = false
 	var cols := [Color(0.35, 0.8, 0.5), Color(0.45, 0.65, 1.0), Color(0.95, 0.45, 0.35)]
 	for k in diff_btns.size():
 		var c: Color = cols[k]

@@ -94,6 +94,10 @@ const EN := {
 	"Normalus": "Normal",
 	"Subalansuotas iššūkis,\nretkarčiais nelaimės": "A balanced challenge,\noccasional disasters",
 	"Sunkus": "Hard",
+	"Ekstremalus": "Extreme",
+	"Slaptas lygis": "Secret level",
+	"★ SLAPTAS LYGIS: EKSTREMALUS ★": "★ SECRET LEVEL: EXTREME ★",
+	"Dar daugiau atliekų, mažiau pinigų, griežčiausi ES tikslai ir nelaimės be perstojo": "Even more waste, less money, the strictest EU targets and non-stop disasters",
 	"Daugiau atliekų, griežtesni ES\ntikslai, dažnesnės nelaimės": "More waste, stricter EU\ntargets, frequent disasters",
 	# --- events
 	"Juodasis penktadienis": "Black Friday",
