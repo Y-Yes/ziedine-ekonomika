@@ -960,7 +960,10 @@ func _build_overlay() -> void:
 	row5.add_child(help_btn)
 	row5.add_child(lang_btn)
 	_build_secret_button()
-	_select_diff(int(Settings.get_value("difficulty", 1)))
+	# The secret level is never pre-selected on launch – it stays a secret;
+	# if it was played last time, "Sunkus" is offered instead.
+	var saved := int(Settings.get_value("difficulty", 1))
+	_select_diff(mini(saved, SECRET_DIFF - 1))
 
 	# Final screen
 	final_box = VBoxContainer.new()
