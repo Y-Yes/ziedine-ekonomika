@@ -105,6 +105,31 @@ var tut_check: CheckBox
 var best_label: Label
 var selected_diff: int = 1
 const SECRET_DIFF := 3
+# Learning mode UI
+var learn_check: Button
+var learn_badge: Label
+var lesson_dim: ColorRect
+var lesson_box: VBoxContainer
+var lesson_head: Label
+var lesson_title: Label
+var lesson_secs: Array[Label] = []
+var lesson_next: Button
+var quiz_box: VBoxContainer
+var quiz_q: Label
+var quiz_btns: Array[Button] = []
+var quiz_feedback: Label
+var quiz_next: Button
+var _lessons_shown: Array[String] = []
+var _lesson_queue: Array[String] = []
+var _lesson_id: String = ""
+var _end_summary: Dictionary = {}
+var _quiz_i: int = 0
+var _quiz_score: int = 0
+var _quiz_answered: bool = false
+var _learning_ending: bool = false
+var _mid_quiz: bool = false
+var quiz_done: bool = false
+var _pending_start: bool = false
 var intro_box: VBoxContainer
 
 ## "How to play" cards shown on first launch (and from the start screen).
@@ -192,6 +217,7 @@ func _build() -> void:
 	_build_glossary_popup()
 	_build_overlay()
 	_build_pause_menu()
+	_build_lessons()
 
 func _style(bg: Color, border: Color, radius: int = 10, bw: int = 2) -> StyleBoxFlat:
 	# Sleek "glass" panels: translucent, cool-tinted, thin light border, soft shadow.
@@ -480,7 +506,7 @@ func rebuild() -> void:
 		tutorial.finish()
 	_root.queue_free()
 	for arr in [row_name, row_desc, row_btn, card_btns, card_chip, card_title, card_desc, card_icons,
-			report_tiles, final_tiles, diff_btns]:
+			report_tiles, final_tiles, diff_btns, lesson_secs, quiz_btns]:
 		arr.clear()
 	panel_station = null
 	_recommended = ""
@@ -543,6 +569,9 @@ func _build_glossary_popup() -> void:
 
 ## Show an economics term the first time it happens in this session.
 func show_term(id: String) -> void:
+	if game.learning and Learning.LESSONS.has(id):
+		show_lesson(id)
+		return
 	if not Glossary.first(id) or gloss_popup == null:
 		return
 	var tr := Glossary.term(id)
@@ -959,6 +988,22 @@ func _build_overlay() -> void:
 	help_btn.pressed.connect(func(): Sfx.play("click"); show_intro())
 	row5.add_child(help_btn)
 	row5.add_child(lang_btn)
+	# Discreet toggle for the presentation (learning) mode
+	learn_check = Button.new()
+	learn_check.toggle_mode = true
+	learn_check.focus_mode = Control.FOCUS_NONE
+	learn_check.custom_minimum_size = Vector2(190, 32)
+	learn_check.add_theme_font_size_override("font_size", 13)
+	learn_check.tooltip_text = Loc.t("Pirmus 4 metus žaidimas sustoja ir paaiškina visas ekonomikos sąvokas (pralaimėti negalima), tada trumpas testas, o toliau žaidi pasirinktu sunkumu.")
+	learn_check.custom_minimum_size = Vector2(250, 32)
+	learn_check.button_pressed = bool(Settings.get_value("learning", false))
+	learn_check.toggled.connect(func(on: bool):
+		Sfx.play("upgrade" if on else "click")
+		if on:
+			tut_check.button_pressed = true   # the guide is part of the teaching flow
+		_style_learn_toggle(on))
+	row5.add_child(learn_check)
+	_style_learn_toggle(learn_check.button_pressed)
 	_build_secret_button()
 	# The secret level is never pre-selected on launch – it stays a secret;
 	# if it was played last time, "Sunkus" is offered instead.
@@ -1045,6 +1090,10 @@ func _build_intro(holder: Control) -> void:
 		body.add_theme_font_size_override("font_size", 13)
 		body.add_theme_color_override("font_color", Color(0.86, 0.9, 0.96))
 		v.add_child(body)
+	var tip := _center_label(intro_box, 14, Color(0.55, 0.85, 1.0))
+	tip.text = Loc.t("Dėstytojams ir pristatymui: pradžios ekrane įjunk „Mokomasis režimas“ – per pirmus 4 metus žaidimas pats sustos ir paaiškins kiekvieną ekonomikos sąvoką, tada bus trumpas testas.")
+	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tip.custom_minimum_size = Vector2(852, 0)
 	var cc := CenterContainer.new()
 	intro_box.add_child(cc)
 	var ok := Button.new()
@@ -1056,8 +1105,288 @@ func _build_intro(holder: Control) -> void:
 	ok.pressed.connect(func():
 		Sfx.play("click")
 		Settings.set_value("intro_seen", true)
-		show_start_overlay())
+		if _pending_start:
+			_on_start_pressed()
+		else:
+			show_start_overlay())
 	cc.add_child(ok)
+
+# --- Learning mode ------------------------------------------------------------
+
+func _build_lessons() -> void:
+	lesson_dim = ColorRect.new()
+	lesson_dim.color = Color(0.01, 0.02, 0.04, 0.72)
+	lesson_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lesson_dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	lesson_dim.visible = false
+	_root.add_child(lesson_dim)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lesson_dim.add_child(cc)
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", _style(Color(0.06, 0.09, 0.14, 0.97), Color(0.45, 0.8, 1.0), 14, 2))
+	cc.add_child(p)
+	var holder := VBoxContainer.new()
+	p.add_child(holder)
+	# lesson page
+	lesson_box = VBoxContainer.new()
+	lesson_box.add_theme_constant_override("separation", 6)
+	holder.add_child(lesson_box)
+	lesson_head = Label.new()
+	lesson_head.add_theme_font_size_override("font_size", 13)
+	lesson_head.add_theme_color_override("font_color", Color(0.45, 0.8, 1.0))
+	lesson_box.add_child(lesson_head)
+	lesson_title = Label.new()
+	lesson_title.add_theme_font_override("font", bold)
+	lesson_title.add_theme_font_size_override("font_size", 30)
+	lesson_title.add_theme_color_override("font_color", Color(1, 1, 1))
+	lesson_box.add_child(lesson_title)
+	var heads := [[Loc.t("KAS TAI?"), Color(1.0, 0.85, 0.4)], [Loc.t("REALIAME PASAULYJE"), Color(0.55, 1.0, 0.6)],
+		[Loc.t("KAIP TAI MATYTI ŽAIDIME"), Color(0.75, 0.6, 1.0)]]
+	for hd in heads:
+		var hl := Label.new()
+		hl.text = hd[0]
+		hl.add_theme_font_override("font", bold)
+		hl.add_theme_font_size_override("font_size", 14)
+		hl.add_theme_color_override("font_color", hd[1])
+		lesson_box.add_child(hl)
+		var body := Label.new()
+		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.custom_minimum_size = Vector2(660, 0)
+		body.add_theme_font_size_override("font_size", 16)
+		body.add_theme_color_override("font_color", Color(0.88, 0.92, 0.97))
+		lesson_box.add_child(body)
+		lesson_secs.append(body)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	lesson_box.add_child(row)
+	lesson_next = Button.new()
+	lesson_next.custom_minimum_size = Vector2(200, 46)
+	lesson_next.add_theme_font_size_override("font_size", 18)
+	lesson_next.add_theme_font_override("font", bold)
+	lesson_next.text = Loc.t("Toliau ▶")
+	_button_styles(lesson_next, Color(0.35, 0.7, 0.95))
+	lesson_next.pressed.connect(_close_lesson)
+	row.add_child(lesson_next)
+	# quiz page
+	quiz_box = VBoxContainer.new()
+	quiz_box.add_theme_constant_override("separation", 10)
+	quiz_box.visible = false
+	holder.add_child(quiz_box)
+	quiz_q = Label.new()
+	quiz_q.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	quiz_q.custom_minimum_size = Vector2(660, 0)
+	quiz_q.add_theme_font_override("font", bold)
+	quiz_q.add_theme_font_size_override("font_size", 22)
+	quiz_box.add_child(quiz_q)
+	for i in 3:
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(660, 46)
+		b.add_theme_font_size_override("font_size", 16)
+		var idx := i
+		b.pressed.connect(func(): _answer(idx))
+		quiz_box.add_child(b)
+		quiz_btns.append(b)
+	quiz_feedback = Label.new()
+	quiz_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	quiz_feedback.custom_minimum_size = Vector2(660, 0)
+	quiz_feedback.add_theme_font_size_override("font_size", 15)
+	quiz_box.add_child(quiz_feedback)
+	var row2 := HBoxContainer.new()
+	row2.alignment = BoxContainer.ALIGNMENT_END
+	quiz_box.add_child(row2)
+	quiz_next = Button.new()
+	quiz_next.custom_minimum_size = Vector2(200, 46)
+	quiz_next.add_theme_font_size_override("font_size", 18)
+	quiz_next.add_theme_font_override("font", bold)
+	quiz_next.text = Loc.t("Toliau ▶")
+	_button_styles(quiz_next, Color(0.35, 0.7, 0.95))
+	quiz_next.pressed.connect(_next_question)
+	row2.add_child(quiz_next)
+	# small badge so everyone sees the mode is on
+	learn_badge = Label.new()
+	learn_badge.text = Loc.t("mokomasis režimas")
+	learn_badge.add_theme_font_size_override("font_size", 11)
+	learn_badge.add_theme_color_override("font_color", Color(0.6, 0.75, 0.9, 0.45))
+	learn_badge.position = Vector2(280, 16)
+	learn_badge.visible = false
+	learn_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(learn_badge)
+
+func _style_learn_toggle(on: bool) -> void:
+	learn_check.text = Loc.t("Mokomasis režimas: ĮJUNGTAS ✓") if on else Loc.t("Mokomasis režimas: išjungtas")
+	if on:
+		# bright blue, glowing
+		var c := Color(0.25, 0.65, 1.0)
+		learn_check.add_theme_stylebox_override("normal", _glow_style(c))
+		learn_check.add_theme_stylebox_override("hover", _glow_style(c.lightened(0.15)))
+		learn_check.add_theme_stylebox_override("pressed", _glow_style(c.lightened(0.15)))
+		learn_check.add_theme_color_override("font_color", Color.WHITE)
+		learn_check.add_theme_color_override("font_hover_color", Color.WHITE)
+		learn_check.add_theme_color_override("font_pressed_color", Color.WHITE)
+	else:
+		_button_styles(learn_check, Color(0.8, 0.3, 0.3))
+		learn_check.add_theme_color_override("font_color", Color(1.0, 0.75, 0.72))
+		learn_check.add_theme_color_override("font_pressed_color", Color(1.0, 0.75, 0.72))
+
+func _glow_style(c: Color) -> StyleBoxFlat:
+	var sb := _style(c.darkened(0.25), Color(0.75, 0.9, 1.0), 8, 2)
+	sb.bg_color = Color(c.darkened(0.25), 0.95)
+	sb.shadow_color = Color(c, 0.75)
+	sb.shadow_size = 12
+	sb.shadow_offset = Vector2.ZERO
+	return sb
+
+## Called by the game at every start.
+func start_learning(on: bool) -> void:
+	_lessons_shown.clear()
+	_lesson_queue.clear()
+	_learning_ending = false
+	_mid_quiz = false
+	quiz_done = false
+	_quiz_score = 0
+	learn_badge.visible = on
+	lesson_dim.visible = false
+	if on:
+		get_tree().create_timer(0.6).timeout.connect(func(): show_lesson("intro"))
+
+func show_lesson(id: String) -> void:
+	if id in _lessons_shown or Learning.lesson(id).is_empty():
+		return
+	if lesson_dim.visible or game.tutorial_active:
+		if not id in _lesson_queue:
+			_lesson_queue.append(id)
+		return
+	_lesson_queue.erase(id)
+	_lessons_shown.append(id)
+	game.lesson_timer = 0.0
+	_lesson_id = id
+	var l := Learning.lesson(id)
+	lesson_head.text = Loc.t("Sąvoka %d iš %d") % [_lessons_shown.size(), Learning.ORDER.size()]
+	lesson_title.text = str(l[0])
+	for i in 3:
+		lesson_secs[i].text = str(l[i + 1])
+	lesson_box.visible = true
+	quiz_box.visible = false
+	lesson_dim.visible = true
+	game.lesson_open = true
+	Sfx.play("card", 0.0, 1.1)
+
+func _close_lesson() -> void:
+	Sfx.play("click")
+	lesson_dim.visible = false
+	game.lesson_open = false
+	if not _lesson_queue.is_empty():
+		show_lesson(_lesson_queue.pop_front())
+	elif _learning_ending:
+		_continue_ending()
+
+func lessons_left() -> int:
+	var n := 0
+	for id in Learning.ORDER:
+		if not id in _lessons_shown:
+			n += 1
+	return n
+
+## Scheduled lesson: the next one in ORDER that has not been shown yet.
+func next_lesson() -> void:
+	if lesson_dim.visible or game.in_report or game.sorting_active:
+		return
+	if not _lesson_queue.is_empty():
+		show_lesson(_lesson_queue.pop_front())
+		return
+	for id in Learning.ORDER:
+		if not id in _lessons_shown:
+			show_lesson(id)
+			return
+
+## Lessons that waited for the guide to finish.
+func flush_lessons() -> void:
+	if not lesson_dim.visible and not _lesson_queue.is_empty():
+		show_lesson(_lesson_queue.pop_front())
+
+## After year LESSON_YEARS: any missing lessons, then the quiz; the game then goes on.
+func learning_mid_quiz() -> void:
+	_mid_quiz = true
+	_learning_ending = true
+	game.lesson_open = true
+	_continue_ending()
+
+## End of a learning game: lessons that never came up, then the quiz.
+func learning_finish(summary: Dictionary) -> void:
+	_end_summary = summary
+	_learning_ending = true
+	game.lesson_open = true
+	_continue_ending()
+
+func _continue_ending() -> void:
+	for id in Learning.ORDER:
+		if not id in _lessons_shown:
+			show_lesson(id)
+			return
+	_start_quiz()
+
+func _start_quiz() -> void:
+	_quiz_i = 0
+	_quiz_score = 0
+	lesson_box.visible = false
+	quiz_box.visible = true
+	lesson_dim.visible = true
+	game.lesson_open = true
+	_show_question()
+
+func _show_question() -> void:
+	var q: Array = Learning.quiz()[_quiz_i]
+	quiz_q.text = (Loc.t("Klausimas %d iš %d") % [_quiz_i + 1, Learning.quiz().size()]) + "\n" + str(q[0])
+	var ans: Array = q[1]
+	for i in 3:
+		var b := quiz_btns[i]
+		b.text = str(ans[i])
+		b.disabled = false
+		_button_styles(b, Color(0.45, 0.55, 0.75))
+	quiz_feedback.text = ""
+	quiz_next.visible = false
+	_quiz_answered = false
+
+func _answer(i: int) -> void:
+	if _quiz_answered:
+		return
+	_quiz_answered = true
+	var q: Array = Learning.quiz()[_quiz_i]
+	var right := int(q[2])
+	for k in 3:
+		var c := Color(0.3, 0.8, 0.45) if k == right else (Color(0.9, 0.35, 0.3) if k == i else Color(0.3, 0.33, 0.4))
+		_button_styles(quiz_btns[k], c)
+	if i == right:
+		_quiz_score += 1
+		Sfx.play("sort_ok")
+		quiz_feedback.add_theme_color_override("font_color", Color(0.55, 1.0, 0.6))
+		quiz_feedback.text = Loc.t("Teisingai! ") + str(q[3])
+	else:
+		Sfx.play("sort_bad")
+		quiz_feedback.add_theme_color_override("font_color", Color(1.0, 0.6, 0.5))
+		quiz_feedback.text = Loc.t("Neteisingai. ") + str(q[3])
+	quiz_next.visible = true
+
+func _next_question() -> void:
+	Sfx.play("click")
+	_quiz_i += 1
+	if _quiz_i < Learning.quiz().size():
+		_show_question()
+		return
+	lesson_dim.visible = false
+	game.lesson_open = false
+	_learning_ending = false
+	quiz_done = true
+	if _mid_quiz:
+		_mid_quiz = false
+		FloatText.spawn(self, get_viewport().get_visible_rect().size * Vector2(0.5, 0.3),
+			Loc.t("Testas: %d iš %d teisingai") % [_quiz_score, Learning.quiz().size()], Color(0.55, 0.9, 1.0), 26)
+		Juice.confetti(self, Vector2(get_viewport().get_visible_rect().size.x * 0.5, 160.0), 40, 1.2)
+		return
+	show_final(_end_summary)
+	if _quiz_score * 2 >= Learning.quiz().size():
+		Juice.confetti(self, Vector2(get_viewport().get_visible_rect().size.x * 0.5, 160.0), 60, 1.4)
 
 func show_intro() -> void:
 	overlay.visible = true
@@ -1137,7 +1466,15 @@ func _select_diff(i: int) -> void:
 func _on_start_pressed() -> void:
 	Sfx.play("card", 0.0)
 	Settings.set_value("difficulty", selected_diff)
-	game.start_game(selected_diff, tut_check.button_pressed)
+	Settings.set_value("learning", learn_check.button_pressed)
+	if learn_check.button_pressed and not _pending_start:
+		# teaching mode: first the "how to play" page, then the game with the guide
+		_pending_start = true
+		show_intro()
+		return
+	_pending_start = false
+	var learn := learn_check.button_pressed
+	game.start_game(selected_diff, tut_check.button_pressed or learn, learn)
 
 func show_start_overlay() -> void:
 	overlay.visible = true
@@ -1148,7 +1485,7 @@ func show_start_overlay() -> void:
 	intro_box.visible = false
 	start_box.visible = true
 	final_box.visible = false
-	tut_check.button_pressed = not bool(Settings.get_value("tutorial_done", false))
+	tut_check.button_pressed = not bool(Settings.get_value("tutorial_done", false)) or learn_check.button_pressed
 	var best := int(Settings.get_value("best_score", 0))
 	best_label.text = Loc.t("Tavo rekordas: %d") % best if best > 0 else ""
 	_refresh_mute()
@@ -1199,8 +1536,12 @@ func show_final(s: Dictionary) -> void:
 	final_box.visible = true
 	final_title.text = game.final_title()
 	final_sub.text = Loc.t("ŽAIDIMAS BAIGTAS") if bool(s.get("lost", false)) else Loc.t("10 metų baigėsi! Tavo įmonės titulas:")
+	if game.learning:
+		final_sub.text = Loc.t("Mokomasis žaidimas baigtas! Tavo įmonės titulas:")
 	var score: int = game.final_score()
 	var best := int(Settings.get_value("best_score", 0))
+	if game.learning:
+		best = maxi(best, score + 1)   # learning games don't count for the record
 	final_tiles[0].text = "€%d" % int(game.total_earned)
 	final_tiles[1].text = str(game.loops)
 	final_tiles[2].text = "%d %%" % int(game.circularity())
@@ -1226,6 +1567,11 @@ func show_final(s: Dictionary) -> void:
 	final_text.text = (Loc.t("Sunkumas: %s.  Paskutinių metų ES tikslas %s.\n")
 		+ Loc.t("Rezultatą lemia uždirbti pinigai, planetos būklė ir žiedinumo rodiklis – turtas ant užterštos planetos vertas mažiau.")) % [
 		Loc.t(str(game.DIFFICULTIES[game.difficulty]["title"])), goal]
+	if game.learning:
+		final_score_label.text = (Loc.t("Rezultatas: %d") % score) + "   ·   " + \
+			Loc.t("Testas: %d iš %d teisingai") % [_quiz_score, Learning.quiz().size()]
+		final_score_label.add_theme_color_override("font_color", Color(0.55, 0.9, 1.0))
+		final_text.text = Loc.t("Šiame žaidime pamatėme: linijinę ir žiedinę ekonomiką, pridėtinę vertę, pirminę ir antrinę žaliavą, išorinį poveikį, Pigou mokestį, masto ekonomiją, ekonomikos augimą, ES žiedinumo tikslus, alternatyviuosius kaštus, paklausą ir pasiūlą bei darbo rinką.")
 
 func hide_overlay() -> void:
 	overlay.visible = false
@@ -1392,7 +1738,7 @@ func _update_bars() -> void:
 	if pol_flash > 0.0:
 		c = c.lerp(Color(1.0, 0.25, 0.25), pol_flash)
 	pol_fill.color = c
-	year_label.text = Loc.t("Metai %d / %d") % [game.year, game.YEARS]
+	year_label.text = Loc.t("Metai %d / %d") % [game.year, game.total_years()]
 	year_fill.size.x = (BAR_W - 4.0) * clampf(game.year_time / game.YEAR_LEN, 0.0, 1.0)
 
 func _refresh_panel() -> void:

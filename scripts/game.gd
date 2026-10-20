@@ -17,6 +17,14 @@ const TOKEN_RADIUS := 9.0
 # Years
 const YEAR_LEN := 60.0       # seconds per in-game year
 const YEARS := 10
+## Learning mode ("Mokymosi režimas"): shorter game, no losing, lessons pause the game.
+## Teaching mode: every lesson is shown during the first LESSON_YEARS years
+## (no losing meanwhile), then a quiz, then the game goes on normally.
+const LESSON_YEARS := 4
+const LESSON_GAP := 16.0          # seconds of play between scheduled lessons
+var learning: bool = false
+var lesson_timer: float = 0.0
+var lesson_open: bool = false
 
 # Pollution (0..100)
 const POL_OVERFLOW := 6.0       # item falls out of the loop -> landfill
@@ -174,6 +182,9 @@ var _income_log: Array = []
 var _shake: float = 0.0
 var _tut_bonus: Bonus = null
 var catastrophe: float = 0.0
+
+func total_years() -> int:
+	return YEARS
 var exploding: bool = false
 const EXPLOSION_TIME := 3.0
 var heat_left: float = 0.0
@@ -295,7 +306,12 @@ func _add_background() -> void:
 
 # --- Game flow -------------------------------------------------------------
 
-func start_game(diff_index: int = -1, with_tutorial: bool = false) -> void:
+func start_game(diff_index: int = -1, with_tutorial: bool = false, learn: bool = false) -> void:
+	learning = learn
+	lesson_open = false
+	lesson_timer = 0.0
+	if learning:
+		Glossary.seen.clear()
 	if diff_index >= 0:
 		difficulty = clampi(diff_index, 0, DIFFICULTIES.size() - 1)
 	diff = DIFFICULTIES[difficulty]
@@ -372,6 +388,7 @@ func start_game(diff_index: int = -1, with_tutorial: bool = false) -> void:
 	tutorial_active = with_tutorial
 	if with_tutorial:
 		hud.start_tutorial()
+	hud.start_learning(learning)
 
 func _reset_year_stats() -> void:
 	year_time = 0.0
@@ -407,7 +424,7 @@ func _end_year() -> void:
 	Sfx.play("year", 0.0)
 	if met:
 		Juice.confetti(hud, Vector2(center.x, 200.0), 60, 1.4)
-	if year >= YEARS:
+	if year >= total_years():
 		_finish_game(summary)
 		return
 	report_cards = _draw_cards(3)
@@ -429,6 +446,8 @@ func choose_card(i: int) -> void:
 	paused = false
 	hud.hide_report()
 	hud.refresh()
+	if learning and year == LESSON_YEARS + 1 and not hud.quiz_done:
+		hud.learning_mid_quiz()
 
 func _draw_cards(n: int) -> Array:
 	var pool := PERKS.duplicate()
@@ -482,11 +501,21 @@ func _finish_game(summary: Dictionary) -> void:
 	bonuses.clear()
 	stations[SORTER].sort_alert = 0.0
 	hud.hide_report()
+	if learning and not hud.quiz_done:
+		hud.learning_finish(summary)   # remaining lessons + quiz, then the final screen
+		return
 	hud.show_final(summary)
 
 ## Losing conditions: long ecological catastrophe or bankruptcy.
 func _check_lose(delta: float) -> void:
 	if tutorial_active:
+		return
+	if learning and year <= LESSON_YEARS:
+		# teaching years: consequences are visible but the game can't be lost,
+		# and the player doesn't start year 5 already doomed
+		pollution = minf(pollution, 90.0)
+		money = maxf(money, BANKRUPT_AT + 60.0)
+		catastrophe = 0.0
 		return
 	if pollution >= 99.5:
 		if catastrophe == 0.0:
@@ -570,6 +599,7 @@ func final_title() -> String:
 
 func tutorial_finished() -> void:
 	tutorial_active = false
+	hud.flush_lessons()
 
 func tutorial_spawn_bonus() -> void:
 	if _tut_bonus != null and is_instance_valid(_tut_bonus):
@@ -676,7 +706,7 @@ func _process(real_delta: float) -> void:
 		position = Vector2.ZERO
 
 	ring.pollution = clampf(pollution / 100.0, 0.0, 1.0)
-	var active := running and not paused and not finished
+	var active := running and not paused and not finished and not lesson_open
 	ring.moving = active
 	for st in stations:
 		st.set_process(active or not running)
@@ -684,6 +714,14 @@ func _process(real_delta: float) -> void:
 		return
 	var delta := real_delta * Station.sim_speed
 	elapsed += delta
+	if learning and not tutorial_active and year <= LESSON_YEARS:
+		# spread the remaining lessons evenly over the rest of the teaching years
+		lesson_timer += delta
+		var time_left := float(LESSON_YEARS - year) * YEAR_LEN + (YEAR_LEN - year_time)
+		var gap := maxf(LESSON_GAP, time_left / float(hud.lessons_left() + 1))
+		if lesson_timer >= gap and hud.lessons_left() > 0:
+			lesson_timer = 0.0
+			hud.next_lesson()
 	if not tutorial_active:
 		year_time += delta
 	add_pollution(-POL_DECAY * perk_decay * delta)
@@ -1154,7 +1192,7 @@ func _end_event() -> void:
 # --- Input -----------------------------------------------------------------
 
 func _unhandled_input(event_in: InputEvent) -> void:
-	if sorting_active:
+	if sorting_active or lesson_open:
 		return
 	if event_in is InputEventKey and event_in.pressed and not event_in.echo:
 		match event_in.keycode:
