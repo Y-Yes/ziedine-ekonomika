@@ -147,7 +147,7 @@ const INTRO_CARDS := [
 	["3. KĄ TU DARAI", "Spausk stotį – ji padirba greičiau (kuo daugiau spaudai, tuo greičiau). Pirk patobulinimus: greitį, sandėlį ir vertę. Gaudyk skraidančias € monetas, o mišrias atliekas rūšiuok – tempk daiktą į tinkamą konteinerį.", Color(1.0, 0.85, 0.4)],
 	["4. PAVOJAI", "Kai stoties sandėlis prisipildo, daiktai iškrenta į sąvartyną ir didėja tarša. Tarša mažina kainas ir sukelia nelaimes: gaisrus, potvynius, streikus. Jei tarša 100 % laikosi 15 s – planeta sprogsta. Skola didesnė nei €150 – bankrotas.", Color(1.0, 0.5, 0.4)],
 	["5. EKONOMIKA", "Kasmet ES tikrina, ar pasiekei žiedinumo tikslą – jei ne, moki baudą. Metų pabaigoje renkiesi vieną iš trijų investicijų, o kitų atsisakai (alternatyvieji kaštai). Nauja žaliava (Tarpas) – greita, bet teršia: tai linijinė ekonomika.", Color(0.75, 0.6, 1.0)],
-	["6. VALDYMAS", "Pelė – spaudyti stotis ir pirkti patobulinimus.\nTarpas – nupirkti naują žaliavą.\nV – išvalyti aplinką.\nEsc – meniu, garsas, sąvokų žodynas.\nF11 – pilnas ekranas.", Color(0.7, 0.8, 0.92)],
+	["6. VALDYMAS", "Pelė – spaudyti stotis ir pirkti patobulinimus.\nTarpas – nupirkti naują žaliavą.\nV – išvalyti aplinką.\nEsc – meniu, garsas, sąvokų žodynas.", Color(0.7, 0.8, 0.92)],
 ]
 var secret_label: Label
 var secret_btn: Button
@@ -565,8 +565,8 @@ func _slider_row(parent: Control, title: String) -> HSlider:
 func refresh_fullscreen() -> void:
 	if fs_btn == null:
 		return
-	var fs := DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]
-	fs_btn.text = Loc.t("Langas (F11)") if fs else Loc.t("Pilnas ekranas (F11)")
+	var fs: bool = game.is_fullscreen()
+	fs_btn.text = Loc.t("Išeiti iš pilno ekrano") if fs else Loc.t("Pilnas ekranas")
 
 # --- Language ----------------------------------------------------------------------
 
@@ -1064,7 +1064,7 @@ func _build_overlay() -> void:
 	st.text = Loc.t("Valdyk žiedinės ekonomikos įmonių grandinę 10 metų – uždirbk ir neleisk planetai užsidegti")
 	var how := _center_label(start_box, 14, Color(0.75, 0.82, 0.92))
 	how.text = (Loc.t("Spausk stotis – rankinis darbas  •  Pirk patobulinimus  •  Gaudyk € monetas  •  Rūšiuok atliekas\n")
-		+ Loc.t("Tarpas – nauja žaliava  •  V – valymas  •  Esc – meniu  •  F11 – pilnas ekranas"))
+		+ Loc.t("Tarpas – nauja žaliava  •  V – valymas  •  Esc – meniu"))
 	var sp := Control.new()
 	sp.custom_minimum_size = Vector2(0, 6)
 	start_box.add_child(sp)
@@ -1145,6 +1145,13 @@ func _build_overlay() -> void:
 	_button_styles(help_btn, Color(0.35, 0.7, 0.95))
 	help_btn.pressed.connect(func(): Sfx.play("click"); show_intro())
 	row5.add_child(help_btn)
+	var fs_start := Button.new()
+	fs_start.text = Loc.t("Pilnas ekranas")
+	fs_start.custom_minimum_size = Vector2(140, 32)
+	fs_start.add_theme_font_size_override("font_size", 13)
+	_button_styles(fs_start)
+	fs_start.pressed.connect(func(): game.toggle_fullscreen())
+	row5.add_child(fs_start)
 	row5.add_child(lang_btn)
 	_build_secret_button()
 	# The secret level is never pre-selected on launch – it stays a secret;
@@ -1923,7 +1930,7 @@ func _input(ev: InputEvent) -> void:
 	if ev is InputEventKey and ev.pressed and not ev.echo:
 		if ev.keycode == KEY_M:
 			_toggle_mute()
-		elif ev.keycode == KEY_F11 or (ev.keycode == KEY_ENTER and ev.alt_pressed):
+		elif not OS.has_feature("web") and (ev.keycode == KEY_F11 or (ev.keycode == KEY_ENTER and ev.alt_pressed)):
 			game.toggle_fullscreen()
 			get_viewport().set_input_as_handled()
 

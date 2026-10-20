@@ -231,7 +231,7 @@ func _ready() -> void:
 	sfx.start_music()
 
 	get_viewport().size_changed.connect(_relayout)
-	if bool(Settings.get_value("fullscreen", false)):
+	if bool(Settings.get_value("fullscreen", false)) and not OS.has_feature("web"):
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	_relayout()
 	hud.refresh_fullscreen()
@@ -286,8 +286,24 @@ func quit_to_menu() -> void:
 	hud.hide_event()
 	hud.show_start_overlay()
 
+## Full screen. In the browser the page itself is put in full screen through
+## JavaScript (works inside itch.io / iframes too), and it is not remembered,
+## because browsers only allow it right after a click or key press.
+func is_fullscreen() -> bool:
+	if OS.has_feature("web"):
+		return bool(JavaScriptBridge.eval("!!(document.fullscreenElement || document.webkitFullscreenElement)", true))
+	return DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]
+
 func toggle_fullscreen() -> void:
-	var fs := DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]
+	var fs := is_fullscreen()
+	if OS.has_feature("web"):
+		if fs:
+			JavaScriptBridge.eval("(document.exitFullscreen || document.webkitExitFullscreen).call(document)", true)
+		else:
+			JavaScriptBridge.eval("var e=document.documentElement;(e.requestFullscreen||e.webkitRequestFullscreen).call(e)", true)
+		Sfx.play("click")
+		get_tree().create_timer(0.4).timeout.connect(func(): hud.refresh_fullscreen())
+		return
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if fs else DisplayServer.WINDOW_MODE_FULLSCREEN)
 	Settings.set_value("fullscreen", not fs)
 	Sfx.play("click")

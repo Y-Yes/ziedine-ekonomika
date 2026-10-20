@@ -1,18 +1,2 @@
-ZIEDINE EKONOMIKA - HTML versija
-================================
-
-Kaip paleisti (Windows):
-  1. Du kartus spustelek ZAISTI.bat
-  2. Narsykleje atsidarys zaidimas.
-  3. Kol zaidi, neuzdaryk juodo lango. Baigus - uzdaryk ji.
-
-Pirma karta paleidus, failas index.wasm bus isskleistas is index.wasm.gz
-(uztrunka kelias sekundes).
-
-Kitur (Mac / Linux):
-  Isskleisk index.wasm.gz i index.wasm, tada siame aplanke paleisk
-  "python3 -m http.server" ir atidaryk http://localhost:8000/index.html
-
-Ikelti i interneta: si aplanka (su isskleistu index.wasm) galima ikelti
-i itch.io kaip HTML zaidima arba i GitHub Pages - tada zaidima galima
-atidaryti tiesiog nuoroda.
+Žaidimas dabar žaidžiamas tik naršyklėje:
+https://realusis.itch.io/iedin-ekonomika

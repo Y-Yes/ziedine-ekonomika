@@ -27,8 +27,7 @@ const EN := {
 	"Efektai": "Effects",
 	"Garso nustatymai": "Sound settings",
 	"Išjungti visą garsą (M)": "Mute all sound (M)",
-	"Langas (F11)": "Window (F11)",
-	"Pilnas ekranas (F11)": "Fullscreen (F11)",
+	"Išeiti iš pilno ekrano": "Exit full screen",
 	"PAJAMOS": "INCOME",
 	"Į SĄVARTYNĄ": "TO LANDFILL",
 	"TARŠA": "POLLUTION",
@@ -38,8 +37,8 @@ const EN := {
 		"Run a circular-economy supply chain for 10 years – make money and don't let the planet burn",
 	"Spausk stotis – rankinis darbas  •  Pirk patobulinimus  •  Gaudyk € monetas  •  Rūšiuok atliekas\n":
 		"Click stations – manual work  •  Buy upgrades  •  Catch € coins  •  Sort waste\n",
-	"Tarpas – nauja žaliava  •  V – valymas  •  Esc – meniu  •  F11 – pilnas ekranas":
-		"Space – new raw material  •  V – clean-up  •  Esc – menu  •  F11 – fullscreen",
+	"Tarpas – nauja žaliava  •  V – valymas  •  Esc – meniu":
+		"Space – new raw material  •  V – clean-up  •  Esc – menu",
 	"SUNKUMO LYGIS": "DIFFICULTY",
 	"Rodyti vedlį (pirmam kartui)": "Show tutorial (first time)",
 	"PRADĖTI": "START",
@@ -160,7 +159,7 @@ const EN := {
 	"Spausk stotį – ji padirba greičiau (kuo daugiau spaudai, tuo greičiau). Pirk patobulinimus: greitį, sandėlį ir vertę. Gaudyk skraidančias € monetas, o mišrias atliekas rūšiuok – tempk daiktą į tinkamą konteinerį.": "Click a station to make it work faster (the more you click, the faster). Buy upgrades: speed, storage and value. Catch the flying € coins and sort mixed waste by dragging each item into the right bin.",
 	"Kai stoties sandėlis prisipildo, daiktai iškrenta į sąvartyną ir didėja tarša. Tarša mažina kainas ir sukelia nelaimes: gaisrus, potvynius, streikus. Jei tarša 100 % laikosi 15 s – planeta sprogsta. Skola didesnė nei €150 – bankrotas.": "When a station's storage is full, items fall out to the landfill and pollution rises. Pollution lowers prices and causes disasters: fires, floods, strikes. If pollution stays at 100 % for 15 s, the planet explodes. Debt above €150 means bankruptcy.",
 	"Kasmet ES tikrina, ar pasiekei žiedinumo tikslą – jei ne, moki baudą. Metų pabaigoje renkiesi vieną iš trijų investicijų, o kitų atsisakai (alternatyvieji kaštai). Nauja žaliava (Tarpas) – greita, bet teršia: tai linijinė ekonomika.": "Every year the EU checks your circularity target – miss it and you pay a fine. At the end of each year you pick one of three investments and give up the others (opportunity cost). New raw material (Space) is fast but polluting: that is the linear economy.",
-	"Pelė – spaudyti stotis ir pirkti patobulinimus.\nTarpas – nupirkti naują žaliavą.\nV – išvalyti aplinką.\nEsc – meniu, garsas, sąvokų žodynas.\nF11 – pilnas ekranas.": "Mouse – click stations and buy upgrades.\nSpace – buy new raw material.\nV – clean up the environment.\nEsc – menu, sound, glossary.\nF11 – full screen.",
+	"Pelė – spaudyti stotis ir pirkti patobulinimus.\nTarpas – nupirkti naują žaliavą.\nV – išvalyti aplinką.\nEsc – meniu, garsas, sąvokų žodynas.": "Mouse – click stations and buy upgrades.\nSpace – buy new raw material.\nV – clean up the environment.\nEsc – menu, sound, glossary.",
 	"Ekstremalus": "Extreme",
 	"Slaptas lygis": "Secret level",
 	"★ SLAPTAS LYGIS: EKSTREMALUS ★": "★ SECRET LEVEL: EXTREME ★",
