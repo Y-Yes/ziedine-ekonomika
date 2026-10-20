@@ -187,12 +187,3 @@ func _draw_belt() -> void:
 		var pulse := 0.35 + 0.35 * (0.5 + 0.5 * sin(a * 3.0 - _time * 2.0))
 		draw_polyline(PackedVector2Array([p - dir * 3.0 + nrm * 5.0, p + dir * 2.5, p - dir * 3.0 - nrm * 5.0]),
 			Color(0.75, 0.93, 1.0, pulse), 1.8, true)
-	# Big arrow heads half way between stations
-	for i in Pipeline.count():
-		var a := base_angle(i) + step * 0.5
-		var dir := Vector2(-sin(a), cos(a))
-		var nrm := Vector2(cos(a), sin(a))
-		var p := center + nrm * radius
-		var col := Pipeline.color_of(i + 1).lerp(Color.WHITE, 0.35)
-		draw_colored_polygon(PackedVector2Array([p + dir * 9.0, p - dir * 5.0 + nrm * 8.0, p - dir * 2.0, p - dir * 5.0 - nrm * 8.0]),
-			Color(col, 0.9))

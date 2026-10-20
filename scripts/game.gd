@@ -24,6 +24,8 @@ const LESSON_YEARS := 4
 const LESSON_GAP := 16.0          # seconds of play between scheduled lessons
 var learning: bool = false
 var lesson_timer: float = 0.0
+## Set while a guide tip freezes the game (first fire, first strike…).
+var coach_freeze: bool = false
 var lesson_open: bool = false
 
 # Pollution (0..100)
@@ -258,6 +260,8 @@ func toggle_pause() -> void:
 
 ## Leave the current game and go back to the start screen.
 func quit_to_menu() -> void:
+	hud.coach_disable()
+	coach_freeze = false
 	running = false
 	paused = false
 	finished = false
@@ -389,6 +393,8 @@ func start_game(diff_index: int = -1, with_tutorial: bool = false, learn: bool =
 	if with_tutorial:
 		hud.start_tutorial()
 	hud.start_learning(learning)
+	coach_freeze = false
+	hud.start_coach(with_tutorial)
 
 func _reset_year_stats() -> void:
 	year_time = 0.0
@@ -489,6 +495,7 @@ func _apply_perk(p: Dictionary) -> void:
 		st.recompute()
 
 func _finish_game(summary: Dictionary) -> void:
+	hud.coach_disable()
 	# Beating "Sunkus" (or harder) makes the secret corner start to glint.
 	if lost_reason == "" and difficulty >= 2:
 		Settings.set_value("hard_beaten", true)
@@ -706,7 +713,7 @@ func _process(real_delta: float) -> void:
 		position = Vector2.ZERO
 
 	ring.pollution = clampf(pollution / 100.0, 0.0, 1.0)
-	var active := running and not paused and not finished and not lesson_open
+	var active := running and not paused and not finished and not lesson_open and not coach_freeze
 	ring.moving = active
 	for st in stations:
 		st.set_process(active or not running)
@@ -807,6 +814,7 @@ func _handle_arrival(t: Token) -> void:
 ## Item leaves the loop: landfill, pollution and the landfill tax.
 func _to_landfill(t: Token, at: Vector2) -> void:
 	hud.show_term("pigou")
+	hud.coach("landfill")
 	landfill.add(t.form)
 	landfilled += 1
 	y_landfill += 1
@@ -940,8 +948,7 @@ func upgrade_selected(kind: String) -> void:
 ## Busy / overflowing stations need speed (or storage if it is much cheaper);
 ## calm stations earn more with added value.
 func recommend(st: Station) -> String:
-	var fill := float(st.buffer.size()) / float(maxi(1, st.capacity))
-	var pressure := maxf(fill, minf(1.0, st.overflow_heat))
+	var pressure := pressure_of(stations.find(st))
 	var order: Array[String] = ["value", "speed", "cap"]
 	if pressure >= 0.5:
 		order = ["speed", "cap", "value"]
@@ -951,6 +958,66 @@ func recommend(st: Station) -> String:
 		if not st.is_maxed(k) and money >= st.cost_of(k):
 			return k
 	return ""
+
+## One tip for the station table: the most filled-up station (the bottleneck)
+## and the upgrade that helps it. [-1, ""] when nothing is filling up.
+## Fill levels are smoothed and a tip stays for a few seconds, so it does not
+## jump around every time a token arrives or leaves.
+var _tip_idx := -1
+var _tip_kind := ""
+var _tip_until := 0
+var _press: Array[float] = []
+var _press_ms := 0
+
+func _raw_pressure(st: Station) -> float:
+	return maxf(float(st.buffer.size()) / float(maxi(1, st.capacity)), minf(1.0, st.overflow_heat))
+
+## Smoothed pressure (averaged over ~4 s).
+func pressure_of(i: int) -> float:
+	_update_press()
+	return _press[i] if i < _press.size() else 0.0
+
+func _update_press() -> void:
+	var now := Time.get_ticks_msec()
+	if _press.size() != stations.size():
+		_press.clear()
+		for st in stations:
+			_press.append(_raw_pressure(st))
+		_press_ms = now
+		return
+	var dt := float(now - _press_ms) / 1000.0
+	if dt <= 0.0:
+		return
+	_press_ms = now
+	var k := 1.0 - exp(-dt / 4.0)
+	for i in stations.size():
+		_press[i] = lerpf(_press[i], _raw_pressure(stations[i]), k)
+
+func table_tip() -> Array:
+	_update_press()
+	var now := Time.get_ticks_msec()
+	# keep the current tip while it is still valid and the hold time runs
+	if _tip_idx >= 0 and now < _tip_until:
+		var cur: Station = stations[_tip_idx]
+		if not cur.is_maxed(_tip_kind) and money >= cur.cost_of(_tip_kind):
+			return [_tip_idx, _tip_kind]
+	var best := -1
+	var best_p := 0.3
+	for i in stations.size():
+		var pr: float = _press[i] + (0.15 if i == _tip_idx else 0.0)
+		if pr > best_p:
+			best_p = pr
+			best = i
+	var k := recommend(stations[best]) if best >= 0 else ""
+	if best < 0 or k == "":
+		_tip_idx = -1
+		_tip_kind = ""
+		return [-1, ""]
+	if best != _tip_idx or k != _tip_kind:
+		_tip_until = now + 6000
+	_tip_idx = best
+	_tip_kind = k
+	return [best, k]
 
 ## Cheapest affordable upgrade of a station, or "".
 func cheapest(st: Station) -> String:
@@ -1042,6 +1109,7 @@ func _trigger_disaster(kind: String) -> void:
 		"fire":
 			st.fire = 9.0 * power
 			hud.show_alert(Loc.t("GAISRAS: %s!") % Pipeline.name_of(st.index), Loc.t("Spausk stotį kelis kartus, kad užgesintum"))
+			hud.coach("fire", st)
 			Sfx.play("fire", 0.0)
 			shake(0.8)
 		"flood":
@@ -1051,6 +1119,7 @@ func _trigger_disaster(kind: String) -> void:
 				_to_landfill(t, st.position)
 			st.flash = 1.0
 			hud.show_alert(Loc.t("POTVYNIS: %s") % Pipeline.name_of(st.index), Loc.t("Išplauta daiktų: %d") % lost)
+			hud.coach("flood", st)
 			Sfx.play("flood", 0.0)
 			shake(0.9)
 		"storm":
@@ -1063,6 +1132,7 @@ func _trigger_disaster(kind: String) -> void:
 			for i in n:
 				_to_landfill(on_belt[i], on_belt[i].position + Vector2(0, 40))
 			hud.show_alert(Loc.t("VĖTRA!"), Loc.t("Nuo konvejerio nupūsta daiktų: %d") % n)
+			hud.coach("storm")
 			Sfx.play("flood", 0.0, 1.4)
 			shake(1.0)
 		"heat":
@@ -1071,6 +1141,7 @@ func _trigger_disaster(kind: String) -> void:
 				s2.hazard_mult = 0.7
 				s2.recompute()
 			hud.show_alert(Loc.t("KARŠČIO BANGA"), Loc.t("Visos stotys %d s dirba 30 %% lėčiau") % int(heat_left))
+			hud.coach("heat")
 			Sfx.play("event", 0.0, 0.7)
 		"strike":
 			if st.index == SORTER and st.sort_alert > 0.0:
@@ -1080,6 +1151,7 @@ func _trigger_disaster(kind: String) -> void:
 			st.strike_cost = 10 + year * 4
 			hud.show_alert(Loc.t("STREIKAS: %s") % Pipeline.name_of(st.index),
 				Loc.t("Darbuotojai reikalauja didesnių algų. Spausk stotį ir sumokėk €%d") % st.strike_cost)
+			hud.coach("strike", st)
 			Sfx.play("error", 0.0, 0.8)
 			shake(0.4)
 
@@ -1113,6 +1185,7 @@ func _update_sorting(delta: float) -> void:
 		sort_timer = randf_range(SORT_MIN_DELAY, SORT_MAX_DELAY)
 		sorter.sort_alert = SORT_WAIT
 		hud.show_alert(Loc.t("MIŠRIOS ATLIEKOS!"), Loc.t("Spausk Rūšiavimo stotį ir išrūšiuok jas"))
+		hud.coach("sort_alert", sorter)
 		Sfx.play("event", 0.0)
 
 func _open_sorting() -> void:
@@ -1121,6 +1194,9 @@ func _open_sorting() -> void:
 	Station.sim_speed = SORT_SLOWMO
 	var count := clampi(5 + year / 2, 5, 9)
 	var s := hud.open_sorting(count)
+	# bigger rewards later in the game, more so on harder levels (Sunkus, year 10: about x2)
+	s.reward_mult = 1.0 + float(year - 1) * (0.05 + 0.04 * float(difficulty))
+	hud.coach("sort_drag")
 	s.finished.connect(_on_sorting_done)
 
 func _on_sorting_done(correct: int, total: int, reward: float) -> void:
@@ -1152,6 +1228,7 @@ func _update_events(delta: float) -> void:
 		_start_event(EVENTS[randi() % EVENTS.size()])
 
 func _start_event(e: Dictionary) -> void:
+	hud.coach("event")
 	event = e
 	event_left = float(e["time"])
 	match str(e["id"]):

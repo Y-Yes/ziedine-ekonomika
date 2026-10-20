@@ -15,7 +15,6 @@ const COL_X := [122.0, 186.0, 250.0]
 const COL_W := 50.0
 const KINDS := ["speed", "cap", "value"]
 const HEADS := ["Greitis", "Sandėlis", "Vertė"]
-const HEAD_COLORS := [Color(0.55, 0.8, 1.0), Color(1.0, 0.8, 0.45), Color(0.6, 1.0, 0.65)]
 
 var game: Node
 var font: Font
@@ -64,80 +63,88 @@ func _affordable(st: Station) -> bool:
 			return true
 	return false
 
+func _pill(r: Rect2, c: Color, border: Color = Color(0, 0, 0, 0), bw: int = 0) -> void:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = c
+	sb.set_corner_radius_all(int(minf(r.size.x, r.size.y) * 0.5))
+	if bw > 0:
+		sb.border_color = border
+		sb.set_border_width_all(bw)
+	sb.anti_aliasing = true
+	draw_style_box(sb, r)
+
 func _draw() -> void:
 	if game == null:
 		return
 	var f := font if font != null else ThemeDB.fallback_font
 	var fb := bold if bold != null else f
-	# Panel
+	# Panel – same glass style as the other panels
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.07, 0.09, 0.13, 0.88)
-	sb.border_color = Color(0.25, 0.3, 0.4, 0.9)
+	sb.bg_color = Color(0.06, 0.09, 0.13, 0.8)
+	sb.border_color = Color(0.4, 0.5, 0.62, 0.6)
 	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(12)
+	sb.set_corner_radius_all(10)
+	sb.shadow_color = Color(0, 0, 0, 0.4)
+	sb.shadow_size = 8
+	sb.shadow_offset = Vector2(0, 3)
 	draw_style_box(sb, Rect2(Vector2.ZERO, size))
 
-	# Header
-	draw_string(fb, Vector2(PAD + 4.0, PAD + 16.0), Loc.t("Stotis"), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.7, 0.78, 0.9))
+	# Header (one muted colour)
+	var head_col := Color(0.62, 0.7, 0.82)
+	draw_string(fb, Vector2(PAD + 4.0, PAD + 16.0), Loc.t("Stotis"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, head_col)
 	for c in 3:
-		draw_string(fb, Vector2(PAD + COL_X[c], PAD + 16.0), Loc.t(HEADS[c]), HORIZONTAL_ALIGNMENT_LEFT, COL_W + 8.0, 12, HEAD_COLORS[c])
+		draw_string(fb, Vector2(PAD + COL_X[c], PAD + 16.0), Loc.t(HEADS[c]), HORIZONTAL_ALIGNMENT_LEFT, COL_W + 8.0, 12, head_col)
+	draw_line(Vector2(PAD, PAD + HEAD_H - 3.0), Vector2(size.x - PAD, PAD + HEAD_H - 3.0), Color(1, 1, 1, 0.08), 1.0)
 
+	var glow_a := 0.5 + 0.5 * sin(_t * 6.0)
+	var tip: Array = game.table_tip() if game.running else [-1, ""]
 	for i in 6:
 		var st: Station = game.stations[i]
-		var accent := Pipeline.color_of(i)
 		var y0 := PAD + HEAD_H + float(i) * ROW_H
 		var row := Rect2(PAD * 0.5, y0, size.x - PAD, ROW_H - 2.0)
 		if game.selected_index == i:
 			var s2 := StyleBoxFlat.new()
-			s2.bg_color = Color(accent, 0.18)
-			s2.border_color = Color(accent, 0.8)
+			s2.bg_color = Color(1, 1, 1, 0.1)
+			s2.border_color = Color(1, 1, 1, 0.35)
 			s2.set_border_width_all(1)
 			s2.set_corner_radius_all(7)
 			draw_style_box(s2, row)
 		elif _hover == i:
 			var s3 := StyleBoxFlat.new()
-			s3.bg_color = Color(1, 1, 1, 0.06)
+			s3.bg_color = Color(1, 1, 1, 0.05)
 			s3.set_corner_radius_all(7)
 			draw_style_box(s3, row)
 
-		# mini picture (first frame of the station animation)
+		# mini picture of the island (no frame around it)
 		var cy := y0 + ROW_H * 0.5 - 1.0
-		draw_circle(Vector2(PAD + 4.0 + ICON * 0.5, cy), ICON * 0.5 + 1.0, Color(0.11, 0.13, 0.18))
-		draw_arc(Vector2(PAD + 4.0 + ICON * 0.5, cy), ICON * 0.5 + 1.0, 0, TAU, 24, accent, 1.5, true)
 		var sh := _sheets[i]
+		var ir := Rect2(PAD + 1.0, cy - ICON * 0.5 - 1.0, ICON + 4.0, ICON + 4.0)
 		if sh != null:
 			var fw := float(sh.get_width()) / float(Station.ANIM_FRAMES)
-			draw_texture_rect_region(sh, Rect2(PAD + 4.0 + 2.0, cy - ICON * 0.5 + 1.0, ICON - 4.0, ICON - 4.0),
-				Rect2(0, 0, fw, float(sh.get_height())))
+			draw_texture_rect_region(sh, ir, Rect2(0, 0, fw, float(sh.get_height())))
 		if st.fire > 0.0:
-			draw_circle(Vector2(PAD + 4.0 + ICON * 0.5, cy), ICON * 0.5, Color(1.0, 0.4, 0.1, 0.5 + 0.3 * sin(_t * 12.0)))
+			draw_circle(ir.get_center(), ICON * 0.45, Color(1.0, 0.4, 0.1, 0.45 + 0.3 * sin(_t * 12.0)))
 
-		# name
-		draw_string(f, Vector2(PAD + NAME_X - 6.0, cy + 5.0), Pipeline.name_of(i), HORIZONTAL_ALIGNMENT_LEFT, 84, 13,
-			accent.lightened(0.2))
+		# name – plain light text
+		draw_string(f, Vector2(PAD + NAME_X - 4.0, cy + 5.0), Pipeline.name_of(i), HORIZONTAL_ALIGNMENT_LEFT, 82, 13,
+			Color(0.9, 0.93, 0.97))
 
-		# level bars – the cheapest affordable upgrade of the station glows
-		var glow_kind: String = game.cheapest(st) if game.running else ""
+		# level bars – smooth pills; the cheapest affordable upgrade glows green
+		var glow_kind: String = tip[1] if int(tip[0]) == i else ""
 		for c in 3:
 			var lvl := st.level_of(KINDS[c])
 			var x0 := PAD + float(COL_X[c])
-			var pip_w := 3.4
-			var gap := 1.0
+			var bw := 36.0
 			var glowing: bool = KINDS[c] == glow_kind
+			var tr := Rect2(x0, cy - 3.0, bw, 6.0)
+			_pill(tr, Color(1, 1, 1, 0.1))
+			var ratio := float(lvl) / float(Station.MAX_LEVEL)
 			if glowing:
-				var pa := 0.35 + 0.35 * (0.5 + 0.5 * sin(_t * 6.0))
-				var gr := Rect2(x0 - 4.0, cy - 10.0, 10 * (pip_w + gap) + 18.0, 20.0)
-				var gs := StyleBoxFlat.new()
-				gs.bg_color = Color(0.35, 1.0, 0.45, pa * 0.35)
-				gs.border_color = Color(0.45, 1.0, 0.55, pa + 0.2)
-				gs.set_border_width_all(2)
-				gs.set_corner_radius_all(5)
-				draw_style_box(gs, gr)
-			for k in Station.MAX_LEVEL:
-				var r := Rect2(x0 + k * (pip_w + gap), cy - 6.0, pip_w, 12.0)
-				var col: Color = HEAD_COLORS[c] if k < lvl else Color(0.2, 0.23, 0.3)
-				if glowing and k == lvl:
-					col = Color(0.45, 1.0, 0.55, 0.5 + 0.5 * sin(_t * 6.0))
-				draw_rect(r, col)
-			draw_string(fb, Vector2(x0 + 10 * (pip_w + gap) + 3.0, cy + 4.0), str(lvl), HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
-				Color(0.55, 1.0, 0.6) if glowing else Color(0.85, 0.9, 1.0, 0.85))
+				var nxt := Rect2(tr.position, Vector2(bw * float(lvl + 1) / float(Station.MAX_LEVEL), 6.0))
+				_pill(nxt, Color(0.4, 1.0, 0.55, 0.25 + 0.35 * glow_a))
+			if lvl > 0:
+				_pill(Rect2(tr.position, Vector2(maxf(6.0, bw * ratio), 6.0)), Color(0.62, 0.8, 1.0))
+			if glowing:
+				_pill(tr.grow(2.5), Color(0, 0, 0, 0), Color(0.45, 1.0, 0.55, 0.4 + 0.5 * glow_a), 1)
+			draw_string(fb, Vector2(x0 + bw + 8.0, cy + 4.0), str(lvl), HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
+				Color(0.55, 1.0, 0.6) if glowing else Color(0.85, 0.9, 1.0, 0.8))

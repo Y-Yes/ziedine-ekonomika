@@ -49,10 +49,12 @@ var sfx_slider: HSlider
 var mute_check: CheckBox
 
 var pol_label: Label
-var pol_fill: ColorRect
+var pol_fill: HudBar
+var top_card: Panel
+var stats_card: Panel
 var pol_flash: float = 0.0
 var year_label: Label
-var year_fill: ColorRect
+var year_fill: HudBar
 
 var table: StationTable
 
@@ -106,7 +108,7 @@ var best_label: Label
 var selected_diff: int = 1
 const SECRET_DIFF := 3
 # Learning mode UI
-var learn_check: Button
+var learn_check: CheckBox
 var learn_badge: Label
 var lesson_dim: ColorRect
 var lesson_box: VBoxContainer
@@ -130,6 +132,12 @@ var _learning_ending: bool = false
 var _mid_quiz: bool = false
 var quiz_done: bool = false
 var _pending_start: bool = false
+var _intro_shown_once: bool = false
+# Guide tips for first-time situations (fire, strike, sorting…)
+var coach_node: Coach
+var _coach_on: bool = false
+var _coach_seen: Array[String] = []
+var _coach_queue: Array = []   # "how to play" before a teaching game: only the first time
 var intro_box: VBoxContainer
 
 ## "How to play" cards shown on first launch (and from the start screen).
@@ -190,18 +198,22 @@ func _build() -> void:
 	_root.theme = th
 	add_child(_root)
 
-	title_label = _label(_root, Vector2(20, 6), 26, Color(0.85, 0.92, 1.0))
-	title_label.add_theme_font_override("font", bold)
-	title_label.text = Loc.t("Žiedinė ekonomika")
-	money_label = _label(_root, Vector2(54, 40), 28, Color(1.0, 0.88, 0.45))
+	# (the game title is shown on the start screen only, not during play)
+	stats_card = Panel.new()
+	stats_card.add_theme_stylebox_override("panel", _style(Color(0.07, 0.09, 0.13, 0.8), Color(0.3, 0.38, 0.5), 10, 1))
+	stats_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_card.position = Vector2(8, 8)
+	stats_card.size = Vector2(232, 112)
+	_root.add_child(stats_card)
+	money_label = _label(_root, Vector2(54, 10), 28, Color(1.0, 0.88, 0.45))
 	money_label.add_theme_font_override("font", bold)
-	income_label = _label(_root, Vector2(56, 76), 14, Color(0.75, 0.85, 0.7))
-	circ_label = _label(_root, Vector2(50, 98), 17, Color(0.75, 0.95, 0.8))
-	loops_label = _label(_root, Vector2(50, 124), 17, Color(0.8, 0.9, 1.0))
-	status_label = _label(_root, Vector2(20, 152), 15, Color(0.95, 0.8, 0.4))
-	_icon(0, Vector2(18, 45), 30)
-	_icon(1, Vector2(21, 100), 22)
-	_icon(2, Vector2(21, 126), 22)
+	income_label = _label(_root, Vector2(56, 46), 14, T_MUTED)
+	circ_label = _label(_root, Vector2(50, 68), 17, T_TEXT)
+	loops_label = _label(_root, Vector2(50, 94), 17, T_TEXT)
+	status_label = _label(_root, Vector2(14, 126), 15, Color(0.95, 0.8, 0.4))
+	_icon(0, Vector2(18, 15), 30)
+	_icon(1, Vector2(21, 70), 22)
+	_icon(2, Vector2(21, 96), 22)
 
 	_build_bars()
 	table = StationTable.new()
@@ -219,15 +231,32 @@ func _build() -> void:
 	_build_pause_menu()
 	_build_lessons()
 
+# --- Theme -----------------------------------------------------------------
+# One look for every window: dark glass surfaces, thin light borders, one blue
+# accent for actions and highlights, green / red / gold only for meaning.
+const T_SURF := Color(0.075, 0.095, 0.135)
+const T_RAISED := Color(0.12, 0.15, 0.2)
+const T_LINE := Color(0.7, 0.8, 0.95, 0.16)
+const T_TEXT := Color(0.93, 0.95, 0.98)
+const T_MUTED := Color(0.64, 0.7, 0.79)
+const T_ACC := Color(0.45, 0.74, 1.0)
+const T_ACC_FILL := Color(0.22, 0.5, 0.88)
+const T_GOOD := Color(0.42, 0.88, 0.58)
+const T_BAD := Color(1.0, 0.5, 0.45)
+const T_GOLD := Color(1.0, 0.85, 0.45)
+
+## Glass surface. The colours passed in are only hints: the fill is always the
+## theme surface; a wide border (bw >= 3) means "highlighted" and keeps its colour.
 func _style(bg: Color, border: Color, radius: int = 10, bw: int = 2) -> StyleBoxFlat:
-	# Sleek "glass" panels: translucent, cool-tinted, thin light border, soft shadow.
 	var sb := StyleBoxFlat.new()
-	var b := bg.lerp(Color(0.05, 0.09, 0.14), 0.25)
-	b.a = minf(bg.a, 0.86)
-	sb.bg_color = b
-	sb.border_color = Color(border.lerp(Color(0.75, 0.9, 1.0), 0.25), border.a * 0.85)
-	sb.set_border_width_all(maxi(1, bw - 1) if bw <= 2 else bw)
-	sb.set_corner_radius_all(mini(radius, 10))
+	sb.bg_color = Color(T_SURF, clampf(bg.a, 0.6, 0.94))
+	if bw >= 3:
+		sb.border_color = Color(border, 0.95)
+		sb.set_border_width_all(2)
+	else:
+		sb.border_color = T_LINE
+		sb.set_border_width_all(1)
+	sb.set_corner_radius_all(clampi(radius, 8, 12))
 	sb.shadow_color = Color(0.0, 0.0, 0.0, 0.4)
 	sb.shadow_size = 8
 	sb.shadow_offset = Vector2(0, 3)
@@ -238,18 +267,66 @@ func _style(bg: Color, border: Color, radius: int = 10, bw: int = 2) -> StyleBox
 	sb.content_margin_bottom = 8
 	return sb
 
-func _button_styles(b: Button, accent: Color) -> void:
-	b.add_theme_stylebox_override("normal", _style(accent.darkened(0.55), accent.darkened(0.2), 8))
-	b.add_theme_stylebox_override("hover", _style(accent.darkened(0.4), accent.lightened(0.1), 8))
-	b.add_theme_stylebox_override("pressed", _style(accent.darkened(0.25), Color.WHITE, 8))
-	b.add_theme_stylebox_override("disabled", _style(Color(0.13, 0.15, 0.2), Color(0.22, 0.25, 0.32), 8))
-	b.add_theme_color_override("font_color", Color(1, 1, 1))
-	b.add_theme_color_override("font_hover_color", Color(1, 1, 1))
-	b.add_theme_color_override("font_pressed_color", Color(1, 1, 1))
-	b.add_theme_color_override("font_disabled_color", Color(0.5, 0.55, 0.62))
+## Callout: surface with a coloured stripe on the left (events, alerts, tips).
+func _callout(c: Color) -> StyleBoxFlat:
+	var sb := _style(Color(0, 0, 0, 0.92), T_LINE, 10, 1)
+	sb.border_color = Color(c, 0.75)
+	sb.set_border_width_all(1)
+	sb.border_width_left = 4
+	sb.content_margin_left = 16
+	return sb
+
+func _btn_box(bg: Color, border: Color, bw: int = 1) -> StyleBoxFlat:
+	var sb := _style(Color(0, 0, 0, bg.a), border, 10, 1)
+	sb.bg_color = bg
+	sb.border_color = border
+	sb.set_border_width_all(bw)
+	sb.shadow_size = 4
+	sb.shadow_offset = Vector2(0, 2)
+	return sb
+
+func _btn_fonts(b: Button, c: Color) -> void:
+	for k in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
+		b.add_theme_color_override(k, c)
+	b.add_theme_color_override("font_disabled_color", Color(T_MUTED, 0.55))
 	b.focus_mode = Control.FOCUS_NONE
 	if not b.mouse_entered.is_connected(_hover_sound):
 		b.mouse_entered.connect(_hover_sound)
+
+## Secondary button (most buttons). `accent` is kept for old calls but the look
+## is the same everywhere; only the hover border lights up in the theme accent.
+func _button_styles(b: Button, _accent: Color = T_ACC) -> void:
+	b.add_theme_stylebox_override("normal", _btn_box(Color(T_RAISED, 0.92), T_LINE))
+	b.add_theme_stylebox_override("hover", _btn_box(Color(T_RAISED.lightened(0.08), 0.96), Color(T_ACC, 0.75)))
+	b.add_theme_stylebox_override("pressed", _btn_box(Color(T_ACC_FILL.darkened(0.35), 0.96), T_ACC))
+	b.add_theme_stylebox_override("hover_pressed", _btn_box(Color(T_ACC_FILL.darkened(0.3), 0.96), T_ACC))
+	b.add_theme_stylebox_override("disabled", _btn_box(Color(T_SURF, 0.6), Color(T_LINE, 0.08)))
+	_btn_fonts(b, T_TEXT)
+
+## Main action of a window (Start, Continue, Next…): filled accent.
+func _primary_styles(b: Button) -> void:
+	b.add_theme_stylebox_override("normal", _btn_box(T_ACC_FILL, T_ACC_FILL.lightened(0.2)))
+	b.add_theme_stylebox_override("hover", _btn_box(T_ACC_FILL.lightened(0.12), T_ACC.lightened(0.3)))
+	b.add_theme_stylebox_override("pressed", _btn_box(T_ACC_FILL.darkened(0.15), T_ACC))
+	b.add_theme_stylebox_override("hover_pressed", _btn_box(T_ACC_FILL.darkened(0.1), T_ACC))
+	b.add_theme_stylebox_override("disabled", _btn_box(Color(T_SURF, 0.6), Color(T_LINE, 0.08)))
+	_btn_fonts(b, Color.WHITE)
+	b.add_theme_font_override("font", bold)
+
+## Button that shows a state with colour (right/wrong answer, best buy, danger).
+func _tinted_button(b: Button, c: Color) -> void:
+	b.add_theme_stylebox_override("normal", _btn_box(Color(c.darkened(0.55), 0.55), Color(c, 0.85), 2))
+	b.add_theme_stylebox_override("hover", _btn_box(Color(c.darkened(0.45), 0.7), c, 2))
+	b.add_theme_stylebox_override("pressed", _btn_box(Color(c.darkened(0.35), 0.8), Color.WHITE, 2))
+	b.add_theme_stylebox_override("disabled", _btn_box(Color(c.darkened(0.6), 0.45), Color(c, 0.6), 2))
+	_btn_fonts(b, T_TEXT)
+	b.add_theme_color_override("font_disabled_color", T_TEXT)
+
+## Danger button (leave game): secondary look, red on hover.
+func _danger_styles(b: Button) -> void:
+	_button_styles(b)
+	b.add_theme_stylebox_override("hover", _btn_box(Color(T_BAD.darkened(0.7), 0.9), Color(T_BAD, 0.8)))
+	b.add_theme_color_override("font_hover_color", T_BAD.lightened(0.2))
 
 ## Visible check-box icons for the dark theme.
 func _style_check(c: CheckBox) -> void:
@@ -271,7 +348,7 @@ func _check_icon(on: bool) -> ImageTexture:
 			if border:
 				img.set_pixel(x, y, Color(0.75, 0.82, 0.92))
 			elif on:
-				img.set_pixel(x, y, Color(0.3, 0.75, 0.45))
+				img.set_pixel(x, y, T_ACC_FILL)
 			else:
 				img.set_pixel(x, y, Color(0.12, 0.14, 0.2))
 	if on:
@@ -290,30 +367,31 @@ func _check_icon(on: bool) -> ImageTexture:
 func _hover_sound() -> void:
 	Sfx.play("click", 0.1, 1.4)
 
-func _bar(pos: Vector2, h: float, bg: Color) -> ColorRect:
-	var back := ColorRect.new()
-	back.color = bg
-	back.position = pos
-	back.size = Vector2(BAR_W, h)
-	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(back)
-	var fill := ColorRect.new()
-	fill.position = Vector2(2, 2)
-	fill.size = Vector2(0, h - 4)
-	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	back.add_child(fill)
-	return fill
+func _bar(pos: Vector2, h: float, mode: String) -> HudBar:
+	var b := HudBar.new()
+	b.mode = mode
+	b.position = pos
+	b.size = Vector2(BAR_W, h)
+	_root.add_child(b)
+	return b
 
 func _build_bars() -> void:
 	var x := DESIGN_W - 20.0 - BAR_W
-	pol_label = _label(_root, Vector2(x, 6), 16, Color(0.9, 0.9, 0.85))
-	pol_fill = _bar(Vector2(x, 30), 18, Color(0.16, 0.19, 0.24))
-	year_label = _label(_root, Vector2(x, 52), 14, Color(0.75, 0.85, 1.0))
-	year_fill = _bar(Vector2(x, 72), 8, Color(0.16, 0.19, 0.24))
-	year_fill.color = Color(0.45, 0.65, 1.0)
+	top_card = Panel.new()
+	var cs := _style(Color(0.07, 0.09, 0.13, 0.8), Color(0.3, 0.38, 0.5), 10, 1)
+	top_card.add_theme_stylebox_override("panel", cs)
+	top_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top_card.position = Vector2(x - 14.0, 8)
+	top_card.size = Vector2(BAR_W + 28.0, 76)
+	_root.add_child(top_card)
+	pol_label = _label(_root, Vector2(x, 12), 15, T_TEXT)
+	pol_fill = _bar(Vector2(x, 36), 10, "gradient")
+	year_label = _label(_root, Vector2(x, 50), 14, T_TEXT)
+	year_fill = _bar(Vector2(x, 72), 6, "segments")
+	year_fill.color = Color(0.5, 0.7, 1.0)
 	# Menu button (Esc) – sound, language, fullscreen and glossary live there.
 	mute_btn = Button.new()
-	mute_btn.position = Vector2(DESIGN_W - 20.0 - 150.0, 84)
+	mute_btn.position = Vector2(DESIGN_W - 20.0 - 150.0, 90)
 	mute_btn.size = Vector2(150, 26)
 	mute_btn.text = Loc.t("Meniu (Esc)")
 	mute_btn.add_theme_font_size_override("font_size", 12)
@@ -361,10 +439,10 @@ func _build_pause_menu() -> void:
 	pause_main = VBoxContainer.new()
 	pause_main.add_theme_constant_override("separation", 8)
 	pc.add_child(pause_main)
-	var t := _center_label(pause_main, 30, Color(0.88, 0.94, 1.0))
+	var t := _center_label(pause_main, 28, T_TEXT)
 	t.add_theme_font_override("font", bold)
 	t.text = Loc.t("PAUZĖ")
-	_menu_button(pause_main, Loc.t("Tęsti"), Color(0.35, 0.8, 0.5), func(): game.toggle_pause())
+	_primary_styles(_menu_button(pause_main, Loc.t("Tęsti"), T_ACC, func(): game.toggle_pause()))
 	_menu_button(pause_main, Loc.t("Iš naujo"), Color(0.45, 0.65, 1.0), func(): game.start_game())
 	_menu_button(pause_main, Loc.t("Ekonomikos žodynėlis"), Color(0.85, 0.7, 0.35), func(): _show_glossary_page(true))
 	fs_btn = _menu_button(pause_main, "", Color(0.5, 0.55, 0.7), func(): game.toggle_fullscreen())
@@ -380,14 +458,14 @@ func _build_pause_menu() -> void:
 	_build_sound_controls(pause_main)
 	var sep2 := HSeparator.new()
 	pause_main.add_child(sep2)
-	_menu_button(pause_main, Loc.t("Į pradžios ekraną"), Color(0.9, 0.4, 0.35), func(): game.quit_to_menu())
+	_danger_styles(_menu_button(pause_main, Loc.t("Į pradžios ekraną"), T_BAD, func(): game.quit_to_menu()))
 
 	# glossary page
 	pause_gloss = VBoxContainer.new()
 	pause_gloss.add_theme_constant_override("separation", 8)
 	pause_gloss.visible = false
 	pc.add_child(pause_gloss)
-	var gt := _center_label(pause_gloss, 26, Color(1.0, 0.85, 0.45))
+	var gt := _center_label(pause_gloss, 26, T_TEXT)
 	gt.add_theme_font_override("font", bold)
 	gt.text = Loc.t("Ekonomikos žodynėlis")
 	var sc := ScrollContainer.new()
@@ -404,14 +482,14 @@ func _build_pause_menu() -> void:
 		name_l.text = str(tr[0])
 		name_l.add_theme_font_override("font", bold)
 		name_l.add_theme_font_size_override("font_size", 17)
-		name_l.add_theme_color_override("font_color", Color(0.6, 0.95, 0.7))
+		name_l.add_theme_color_override("font_color", T_ACC)
 		list.add_child(name_l)
 		var d := Label.new()
 		d.text = str(tr[1])
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		d.custom_minimum_size = Vector2(530, 0)
 		d.add_theme_font_size_override("font_size", 14)
-		d.add_theme_color_override("font_color", Color(0.8, 0.86, 0.94))
+		d.add_theme_color_override("font_color", T_MUTED.lightened(0.12))
 		list.add_child(d)
 	_menu_button(pause_gloss, Loc.t("Atgal"), Color(0.5, 0.55, 0.7), func(): _show_glossary_page(false))
 
@@ -469,12 +547,12 @@ func _slider_row(parent: Control, title: String) -> HSlider:
 	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	sl.focus_mode = Control.FOCUS_NONE
 	var track := StyleBoxFlat.new()
-	track.bg_color = Color(0.2, 0.23, 0.3)
+	track.bg_color = Color(1, 1, 1, 0.1)
 	track.set_corner_radius_all(4)
 	track.content_margin_top = 3
 	track.content_margin_bottom = 3
 	var fill := StyleBoxFlat.new()
-	fill.bg_color = Color(0.45, 0.8, 0.55)
+	fill.bg_color = T_ACC
 	fill.set_corner_radius_all(4)
 	fill.content_margin_top = 3
 	fill.content_margin_bottom = 3
@@ -533,11 +611,11 @@ func rebuild() -> void:
 
 func _build_glossary_popup() -> void:
 	gloss_popup = PanelContainer.new()
-	var sb := _style(Color(0.1, 0.13, 0.1, 0.96), Color(0.55, 0.95, 0.6), 12)
-	sb.content_margin_left = 14
+	var sb := _callout(T_ACC)
+	sb.content_margin_left = 16
 	sb.content_margin_right = 14
 	gloss_popup.add_theme_stylebox_override("panel", sb)
-	gloss_popup.position = Vector2(14, 160)
+	gloss_popup.position = Vector2(14, 150)
 	gloss_popup.custom_minimum_size = Vector2(330, 0)
 	gloss_popup.mouse_filter = Control.MOUSE_FILTER_STOP
 	gloss_popup.visible = false
@@ -554,7 +632,7 @@ func _build_glossary_popup() -> void:
 	chip.text = Loc.t("EKONOMIKOS SĄVOKA")
 	chip.add_theme_font_override("font", bold)
 	chip.add_theme_font_size_override("font_size", 11)
-	chip.add_theme_color_override("font_color", Color(0.55, 0.95, 0.6))
+	chip.add_theme_color_override("font_color", T_ACC)
 	vb.add_child(chip)
 	gloss_title = Label.new()
 	gloss_title.add_theme_font_override("font", bold)
@@ -564,7 +642,7 @@ func _build_glossary_popup() -> void:
 	gloss_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	gloss_text.custom_minimum_size = Vector2(300, 0)
 	gloss_text.add_theme_font_size_override("font_size", 13)
-	gloss_text.add_theme_color_override("font_color", Color(0.82, 0.9, 0.85))
+	gloss_text.add_theme_color_override("font_color", T_MUTED.lightened(0.15))
 	vb.add_child(gloss_text)
 
 ## Show an economics term the first time it happens in this session.
@@ -588,10 +666,11 @@ func relayout(vp: Vector2) -> void:
 		return
 	var x := vp.x - 20.0 - BAR_W
 	pol_label.position.x = x
-	(pol_fill.get_parent() as Control).position.x = x
+	pol_fill.position.x = x
 	year_label.position.x = x
-	(year_fill.get_parent() as Control).position.x = x
-	mute_btn.position = Vector2(vp.x - 20.0 - 150.0, 84)
+	year_fill.position.x = x
+	top_card.position.x = x - 14.0
+	mute_btn.position = Vector2(vp.x - 20.0 - 150.0, 90)
 	event_panel.position.x = vp.x * 0.5 - 210.0
 	alert_panel.position = Vector2(vp.x * 0.5 - 170.0, vp.y * 0.5 - 34.0)
 	panel.position.x = vp.x - 20.0 - maxf(310.0, panel.size.x)
@@ -606,7 +685,7 @@ func _refresh_mute() -> void:
 
 func _build_event_banner() -> void:
 	event_panel = PanelContainer.new()
-	event_panel.add_theme_stylebox_override("panel", _style(Color(0.16, 0.13, 0.06, 0.95), Color(1.0, 0.8, 0.3)))
+	event_panel.add_theme_stylebox_override("panel", _callout(T_GOLD))
 	event_panel.position = Vector2(DESIGN_W * 0.5 - 210, 6)
 	event_panel.custom_minimum_size = Vector2(420, 0)
 	event_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -615,21 +694,21 @@ func _build_event_banner() -> void:
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 2)
 	event_panel.add_child(vb)
-	event_title = _center_label(vb, 18, Color(1.0, 0.85, 0.4))
+	event_title = _center_label(vb, 17, T_TEXT)
 	event_title.add_theme_font_override("font", bold)
-	event_desc = _center_label(vb, 14, Color(0.95, 0.92, 0.85))
+	event_desc = _center_label(vb, 13, T_MUTED.lightened(0.15))
 	var bar_bg := ColorRect.new()
-	bar_bg.color = Color(0.3, 0.25, 0.1)
+	bar_bg.color = Color(1, 1, 1, 0.08)
 	bar_bg.custom_minimum_size = Vector2(396, 4)
 	vb.add_child(bar_bg)
 	event_bar = ColorRect.new()
-	event_bar.color = Color(1.0, 0.8, 0.3)
+	event_bar.color = T_GOLD
 	event_bar.size = Vector2(396, 4)
 	bar_bg.add_child(event_bar)
 
 func _build_alert() -> void:
 	alert_panel = PanelContainer.new()
-	alert_panel.add_theme_stylebox_override("panel", _style(Color(0.25, 0.06, 0.04, 0.95), Color(1.0, 0.4, 0.25)))
+	alert_panel.add_theme_stylebox_override("panel", _callout(T_BAD))
 	alert_panel.position = Vector2(DESIGN_W * 0.5 - 170, 290)
 	alert_panel.custom_minimum_size = Vector2(340, 0)
 	alert_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -637,9 +716,9 @@ func _build_alert() -> void:
 	_root.add_child(alert_panel)
 	var vb := VBoxContainer.new()
 	alert_panel.add_child(vb)
-	alert_title = _center_label(vb, 18, Color(1.0, 0.6, 0.4))
+	alert_title = _center_label(vb, 17, T_BAD.lightened(0.1))
 	alert_title.add_theme_font_override("font", bold)
-	alert_desc = _center_label(vb, 13, Color(1.0, 0.9, 0.85))
+	alert_desc = _center_label(vb, 13, T_TEXT)
 
 func _label(parent: Control, pos: Vector2, size: int, color: Color = Color(0.92, 0.95, 1.0)) -> Label:
 	var l := Label.new()
@@ -755,22 +834,84 @@ func _build_rec_badge() -> void:
 	_rec_badge.visible = false
 	_root.add_child(_rec_badge)
 
-func _build_buttons() -> void:
-	clean_btn = Button.new()
-	clean_btn.position = Vector2(DESIGN_W - 330, DESIGN_H - 136)
-	clean_btn.size = Vector2(310, 54)
-	clean_btn.add_theme_font_size_override("font_size", 14)
-	_button_styles(clean_btn, Color(0.3, 0.7, 0.9))
-	clean_btn.pressed.connect(func(): game.clean_up())
-	_root.add_child(clean_btn)
+var _act: Dictionary = {}
 
-	raw_btn = Button.new()
-	raw_btn.position = Vector2(DESIGN_W - 330, DESIGN_H - 74)
-	raw_btn.size = Vector2(310, 54)
-	raw_btn.add_theme_font_size_override("font_size", 14)
-	_button_styles(raw_btn, Color(0.85, 0.55, 0.25))
-	raw_btn.pressed.connect(func(): game.buy_raw())
-	_root.add_child(raw_btn)
+## Action button: bold title + price on the left, small hint below,
+## keyboard key in a chip on the right. Same glass style as the panels.
+func _action_button(accent: Color, pos: Vector2, cb: Callable) -> Button:
+	var b := Button.new()
+	b.position = pos
+	b.size = Vector2(310, 54)
+	b.focus_mode = Control.FOCUS_NONE
+	var mk := func(bg_a: float, bc: Color) -> StyleBoxFlat:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.07, 0.09, 0.13, bg_a)
+		sb.border_color = bc
+		sb.set_border_width_all(1)
+		sb.border_width_left = 4
+		sb.set_corner_radius_all(10)
+		sb.shadow_color = Color(0, 0, 0, 0.4)
+		sb.shadow_size = 8
+		sb.shadow_offset = Vector2(0, 3)
+		sb.anti_aliasing = true
+		return sb
+	b.add_theme_stylebox_override("normal", mk.call(0.82, Color(accent, 0.75)))
+	var hv: StyleBoxFlat = mk.call(0.9, accent.lightened(0.15))
+	hv.bg_color = Color(accent.darkened(0.7), 0.92)
+	b.add_theme_stylebox_override("hover", hv)
+	var pr: StyleBoxFlat = mk.call(0.95, Color.WHITE)
+	pr.bg_color = Color(accent.darkened(0.55), 0.95)
+	b.add_theme_stylebox_override("pressed", pr)
+	b.add_theme_stylebox_override("disabled", mk.call(0.6, Color(0.35, 0.4, 0.48, 0.5)))
+	b.mouse_entered.connect(_hover_sound)
+	b.pressed.connect(cb)
+	_root.add_child(b)
+	var title := Label.new()
+	title.position = Vector2(18, 7)
+	title.add_theme_font_override("font", bold)
+	title.add_theme_font_size_override("font_size", 15)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(title)
+	var sub := Label.new()
+	sub.position = Vector2(18, 29)
+	sub.add_theme_font_size_override("font_size", 12)
+	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(sub)
+	var key := Label.new()
+	key.add_theme_font_override("font", bold)
+	key.add_theme_font_size_override("font_size", 11)
+	key.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ks := StyleBoxFlat.new()
+	ks.bg_color = Color(1, 1, 1, 0.08)
+	ks.border_color = Color(1, 1, 1, 0.25)
+	ks.set_border_width_all(1)
+	ks.set_corner_radius_all(5)
+	ks.content_margin_left = 7
+	ks.content_margin_right = 7
+	ks.content_margin_top = 2
+	ks.content_margin_bottom = 2
+	key.add_theme_stylebox_override("normal", ks)
+	b.add_child(key)
+	_act[b] = {"title": title, "sub": sub, "key": key, "accent": accent}
+	return b
+
+func _set_action(b: Button, title: String, sub: String, key: String, disabled: bool) -> void:
+	var d: Dictionary = _act[b]
+	b.disabled = disabled
+	(d["title"] as Label).text = title
+	(d["sub"] as Label).text = sub
+	var kl: Label = d["key"]
+	kl.text = key
+	kl.reset_size()
+	kl.position = Vector2(b.size.x - kl.size.x - 12.0, 9.0)
+	var accent: Color = d["accent"]
+	(d["title"] as Label).add_theme_color_override("font_color", Color(0.55, 0.6, 0.66) if disabled else Color(0.95, 0.97, 1.0))
+	(d["sub"] as Label).add_theme_color_override("font_color", Color(0.45, 0.5, 0.56) if disabled else accent.lerp(Color.WHITE, 0.45))
+	kl.add_theme_color_override("font_color", Color(0.5, 0.55, 0.6) if disabled else Color(0.85, 0.9, 0.95))
+
+func _build_buttons() -> void:
+	clean_btn = _action_button(Color(0.35, 0.75, 0.95), Vector2(DESIGN_W - 330, DESIGN_H - 136), func(): game.clean_up())
+	raw_btn = _action_button(Color(0.95, 0.62, 0.3), Vector2(DESIGN_W - 330, DESIGN_H - 74), func(): game.buy_raw())
 
 # --- Yearly report ---------------------------------------------------------------
 
@@ -798,7 +939,7 @@ func _build_report() -> void:
 	vb.add_theme_constant_override("separation", 12)
 	pc.add_child(vb)
 
-	report_title = _center_label(vb, 30, Color(0.88, 0.94, 1.0))
+	report_title = _center_label(vb, 28, T_TEXT)
 	report_title.add_theme_font_override("font", bold)
 
 	# stat tiles
@@ -816,9 +957,9 @@ func _build_report() -> void:
 		var tv := VBoxContainer.new()
 		tv.add_theme_constant_override("separation", 0)
 		t.add_child(tv)
-		var big := _center_label(tv, 26, td[1])
+		var big := _center_label(tv, 26, T_TEXT)
 		big.add_theme_font_override("font", bold)
-		var small := _center_label(tv, 11, Color(0.65, 0.72, 0.82))
+		var small := _center_label(tv, 11, T_MUTED)
 		small.text = td[0]
 		report_tiles.append(big)
 
@@ -834,7 +975,7 @@ func _build_report() -> void:
 
 	var sep := HSeparator.new()
 	vb.add_child(sep)
-	var pick := _center_label(vb, 15, Color(0.8, 0.86, 0.95))
+	var pick := _center_label(vb, 15, T_MUTED.lightened(0.15))
 	pick.text = Loc.t("Pasirink VIENĄ investiciją ateinantiems metams:")
 
 	var hb := HBoxContainer.new()
@@ -916,10 +1057,10 @@ func _build_overlay() -> void:
 	start_box = VBoxContainer.new()
 	start_box.add_theme_constant_override("separation", 12)
 	holder.add_child(start_box)
-	var t := _center_label(start_box, 50, Color(0.85, 0.95, 1.0))
+	var t := _center_label(start_box, 50, T_TEXT)
 	t.add_theme_font_override("font", bold)
 	t.text = Loc.t("Žiedinė ekonomika")
-	var st := _center_label(start_box, 17, Color(0.65, 0.9, 0.7))
+	var st := _center_label(start_box, 17, T_MUTED.lightened(0.2))
 	st.text = Loc.t("Valdyk žiedinės ekonomikos įmonių grandinę 10 metų – uždirbk ir neleisk planetai užsidegti")
 	var how := _center_label(start_box, 14, Color(0.75, 0.82, 0.92))
 	how.text = (Loc.t("Spausk stotis – rankinis darbas  •  Pirk patobulinimus  •  Gaudyk € monetas  •  Rūšiuok atliekas\n")
@@ -927,7 +1068,7 @@ func _build_overlay() -> void:
 	var sp := Control.new()
 	sp.custom_minimum_size = Vector2(0, 6)
 	start_box.add_child(sp)
-	var dl := _center_label(start_box, 15, Color(1.0, 0.85, 0.45))
+	var dl := _center_label(start_box, 13, T_ACC)
 	dl.add_theme_font_override("font", bold)
 	dl.text = Loc.t("SUNKUMO LYGIS")
 	var dh := HBoxContainer.new()
@@ -957,7 +1098,24 @@ func _build_overlay() -> void:
 	tut_check.add_theme_font_size_override("font_size", 14)
 	_style_check(tut_check)
 	tut_check.button_pressed = not bool(Settings.get_value("tutorial_done", false))
-	cc2.add_child(tut_check)
+	var checks := VBoxContainer.new()
+	checks.add_theme_constant_override("separation", 6)
+	cc2.add_child(checks)
+	checks.add_child(tut_check)
+	# Teaching mode lives next to the guide; always off when the game starts.
+	learn_check = CheckBox.new()
+	learn_check.text = Loc.t("Mokomasis režimas (paaiškina ekonomikos sąvokas, pabaigoje testas)")
+	learn_check.focus_mode = Control.FOCUS_NONE
+	learn_check.add_theme_font_size_override("font_size", 14)
+	learn_check.tooltip_text = Loc.t("Pirmus 4 metus žaidimas sustoja ir paaiškina visas ekonomikos sąvokas (pralaimėti negalima), tada trumpas testas, o toliau žaidi pasirinktu sunkumu.")
+	_style_check(learn_check)
+	learn_check.button_pressed = false
+	learn_check.toggled.connect(func(on: bool):
+		Sfx.play("click")
+		if on:
+			tut_check.button_pressed = true   # the guide is part of the teaching flow
+	)
+	checks.add_child(learn_check)
 	var cc3 := CenterContainer.new()
 	start_box.add_child(cc3)
 	var go := Button.new()
@@ -965,7 +1123,7 @@ func _build_overlay() -> void:
 	go.add_theme_font_size_override("font_size", 22)
 	go.add_theme_font_override("font", bold)
 	go.text = Loc.t("PRADĖTI")
-	_button_styles(go, Color(0.35, 0.8, 0.5))
+	_primary_styles(go)
 	go.pressed.connect(_on_start_pressed)
 	cc3.add_child(go)
 	best_label = _center_label(start_box, 13, Color(0.6, 0.68, 0.8))
@@ -988,22 +1146,6 @@ func _build_overlay() -> void:
 	help_btn.pressed.connect(func(): Sfx.play("click"); show_intro())
 	row5.add_child(help_btn)
 	row5.add_child(lang_btn)
-	# Discreet toggle for the presentation (learning) mode
-	learn_check = Button.new()
-	learn_check.toggle_mode = true
-	learn_check.focus_mode = Control.FOCUS_NONE
-	learn_check.custom_minimum_size = Vector2(190, 32)
-	learn_check.add_theme_font_size_override("font_size", 13)
-	learn_check.tooltip_text = Loc.t("Pirmus 4 metus žaidimas sustoja ir paaiškina visas ekonomikos sąvokas (pralaimėti negalima), tada trumpas testas, o toliau žaidi pasirinktu sunkumu.")
-	learn_check.custom_minimum_size = Vector2(250, 32)
-	learn_check.button_pressed = bool(Settings.get_value("learning", false))
-	learn_check.toggled.connect(func(on: bool):
-		Sfx.play("upgrade" if on else "click")
-		if on:
-			tut_check.button_pressed = true   # the guide is part of the teaching flow
-		_style_learn_toggle(on))
-	row5.add_child(learn_check)
-	_style_learn_toggle(learn_check.button_pressed)
 	_build_secret_button()
 	# The secret level is never pre-selected on launch – it stays a secret;
 	# if it was played last time, "Sunkus" is offered instead.
@@ -1015,7 +1157,7 @@ func _build_overlay() -> void:
 	final_box.add_theme_constant_override("separation", 14)
 	final_box.visible = false
 	holder.add_child(final_box)
-	final_sub = _center_label(final_box, 16, Color(0.65, 0.9, 0.7))
+	final_sub = _center_label(final_box, 16, T_MUTED.lightened(0.15))
 	final_title = _center_label(final_box, 40, Color(1.0, 0.88, 0.45))
 	final_title.add_theme_font_override("font", bold)
 	var ftiles := HBoxContainer.new()
@@ -1032,9 +1174,9 @@ func _build_overlay() -> void:
 		var tv := VBoxContainer.new()
 		tv.add_theme_constant_override("separation", 0)
 		t2.add_child(tv)
-		var big := _center_label(tv, 24, td[1])
+		var big := _center_label(tv, 24, T_TEXT)
 		big.add_theme_font_override("font", bold)
-		var small := _center_label(tv, 11, Color(0.65, 0.72, 0.82))
+		var small := _center_label(tv, 11, T_MUTED)
 		small.text = td[0]
 		final_tiles.append(big)
 	final_score_label = _center_label(final_box, 30, Color(1, 1, 1))
@@ -1049,7 +1191,7 @@ func _build_overlay() -> void:
 	again.add_theme_font_size_override("font_size", 20)
 	again.add_theme_font_override("font", bold)
 	again.text = Loc.t("Žaisti dar kartą")
-	_button_styles(again, Color(0.35, 0.8, 0.5))
+	_primary_styles(again)
 	again.pressed.connect(func(): show_start_overlay())
 	cc4.add_child(again)
 
@@ -1058,10 +1200,10 @@ func _build_intro(holder: Control) -> void:
 	intro_box.add_theme_constant_override("separation", 10)
 	intro_box.visible = false
 	holder.add_child(intro_box)
-	var t := _center_label(intro_box, 34, Color(0.85, 0.95, 1.0))
+	var t := _center_label(intro_box, 34, T_TEXT)
 	t.add_theme_font_override("font", bold)
 	t.text = Loc.t("Kaip žaisti?")
-	var sub := _center_label(intro_box, 15, Color(0.65, 0.9, 0.7))
+	var sub := _center_label(intro_box, 15, T_MUTED.lightened(0.15))
 	sub.text = Loc.t("Žiedinė ekonomika – daiktai ne išmetami, o vėl ir vėl panaudojami. Štai kaip tai veikia žaidime:")
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -1071,7 +1213,7 @@ func _build_intro(holder: Control) -> void:
 	for card in INTRO_CARDS:
 		var c: Color = card[2]
 		var p := PanelContainer.new()
-		p.add_theme_stylebox_override("panel", _style(Color(0.08, 0.1, 0.15, 0.95), Color(c, 0.55), 10, 1))
+		p.add_theme_stylebox_override("panel", _style(Color(0, 0, 0, 0.9), T_LINE, 10, 1))
 		p.custom_minimum_size = Vector2(420, 128)
 		grid.add_child(p)
 		var v := VBoxContainer.new()
@@ -1081,16 +1223,16 @@ func _build_intro(holder: Control) -> void:
 		hd.text = Loc.t(str(card[0]))
 		hd.add_theme_font_override("font", bold)
 		hd.add_theme_font_size_override("font_size", 15)
-		hd.add_theme_color_override("font_color", c)
+		hd.add_theme_color_override("font_color", T_ACC)
 		v.add_child(hd)
 		var body := Label.new()
 		body.text = Loc.t(str(card[1]))
 		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		body.custom_minimum_size = Vector2(396, 0)
 		body.add_theme_font_size_override("font_size", 13)
-		body.add_theme_color_override("font_color", Color(0.86, 0.9, 0.96))
+		body.add_theme_color_override("font_color", T_MUTED.lightened(0.18))
 		v.add_child(body)
-	var tip := _center_label(intro_box, 14, Color(0.55, 0.85, 1.0))
+	var tip := _center_label(intro_box, 13, T_MUTED)
 	tip.text = Loc.t("Dėstytojams ir pristatymui: pradžios ekrane įjunk „Mokomasis režimas“ – per pirmus 4 metus žaidimas pats sustos ir paaiškins kiekvieną ekonomikos sąvoką, tada bus trumpas testas.")
 	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tip.custom_minimum_size = Vector2(852, 0)
@@ -1101,7 +1243,7 @@ func _build_intro(holder: Control) -> void:
 	ok.add_theme_font_size_override("font_size", 20)
 	ok.add_theme_font_override("font", bold)
 	ok.text = Loc.t("Supratau – pirmyn!")
-	_button_styles(ok, Color(0.35, 0.8, 0.5))
+	_primary_styles(ok)
 	ok.pressed.connect(func():
 		Sfx.play("click")
 		Settings.set_value("intro_seen", true)
@@ -1134,15 +1276,15 @@ func _build_lessons() -> void:
 	holder.add_child(lesson_box)
 	lesson_head = Label.new()
 	lesson_head.add_theme_font_size_override("font_size", 13)
-	lesson_head.add_theme_color_override("font_color", Color(0.45, 0.8, 1.0))
+	lesson_head.add_theme_color_override("font_color", T_ACC)
 	lesson_box.add_child(lesson_head)
 	lesson_title = Label.new()
 	lesson_title.add_theme_font_override("font", bold)
 	lesson_title.add_theme_font_size_override("font_size", 30)
 	lesson_title.add_theme_color_override("font_color", Color(1, 1, 1))
 	lesson_box.add_child(lesson_title)
-	var heads := [[Loc.t("KAS TAI?"), Color(1.0, 0.85, 0.4)], [Loc.t("REALIAME PASAULYJE"), Color(0.55, 1.0, 0.6)],
-		[Loc.t("KAIP TAI MATYTI ŽAIDIME"), Color(0.75, 0.6, 1.0)]]
+	var heads := [[Loc.t("KAS TAI?"), T_ACC], [Loc.t("REALIAME PASAULYJE"), T_ACC],
+		[Loc.t("KAIP TAI MATYTI ŽAIDIME"), T_ACC]]
 	for hd in heads:
 		var hl := Label.new()
 		hl.text = hd[0]
@@ -1154,7 +1296,7 @@ func _build_lessons() -> void:
 		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		body.custom_minimum_size = Vector2(660, 0)
 		body.add_theme_font_size_override("font_size", 16)
-		body.add_theme_color_override("font_color", Color(0.88, 0.92, 0.97))
+		body.add_theme_color_override("font_color", T_TEXT)
 		lesson_box.add_child(body)
 		lesson_secs.append(body)
 	var row := HBoxContainer.new()
@@ -1165,7 +1307,7 @@ func _build_lessons() -> void:
 	lesson_next.add_theme_font_size_override("font_size", 18)
 	lesson_next.add_theme_font_override("font", bold)
 	lesson_next.text = Loc.t("Toliau ▶")
-	_button_styles(lesson_next, Color(0.35, 0.7, 0.95))
+	_primary_styles(lesson_next)
 	lesson_next.pressed.connect(_close_lesson)
 	row.add_child(lesson_next)
 	# quiz page
@@ -1200,7 +1342,7 @@ func _build_lessons() -> void:
 	quiz_next.add_theme_font_size_override("font_size", 18)
 	quiz_next.add_theme_font_override("font", bold)
 	quiz_next.text = Loc.t("Toliau ▶")
-	_button_styles(quiz_next, Color(0.35, 0.7, 0.95))
+	_primary_styles(quiz_next)
 	quiz_next.pressed.connect(_next_question)
 	row2.add_child(quiz_next)
 	# small badge so everyone sees the mode is on
@@ -1212,30 +1354,6 @@ func _build_lessons() -> void:
 	learn_badge.visible = false
 	learn_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(learn_badge)
-
-func _style_learn_toggle(on: bool) -> void:
-	learn_check.text = Loc.t("Mokomasis režimas: ĮJUNGTAS ✓") if on else Loc.t("Mokomasis režimas: išjungtas")
-	if on:
-		# bright blue, glowing
-		var c := Color(0.25, 0.65, 1.0)
-		learn_check.add_theme_stylebox_override("normal", _glow_style(c))
-		learn_check.add_theme_stylebox_override("hover", _glow_style(c.lightened(0.15)))
-		learn_check.add_theme_stylebox_override("pressed", _glow_style(c.lightened(0.15)))
-		learn_check.add_theme_color_override("font_color", Color.WHITE)
-		learn_check.add_theme_color_override("font_hover_color", Color.WHITE)
-		learn_check.add_theme_color_override("font_pressed_color", Color.WHITE)
-	else:
-		_button_styles(learn_check, Color(0.8, 0.3, 0.3))
-		learn_check.add_theme_color_override("font_color", Color(1.0, 0.75, 0.72))
-		learn_check.add_theme_color_override("font_pressed_color", Color(1.0, 0.75, 0.72))
-
-func _glow_style(c: Color) -> StyleBoxFlat:
-	var sb := _style(c.darkened(0.25), Color(0.75, 0.9, 1.0), 8, 2)
-	sb.bg_color = Color(c.darkened(0.25), 0.95)
-	sb.shadow_color = Color(c, 0.75)
-	sb.shadow_size = 12
-	sb.shadow_offset = Vector2.ZERO
-	return sb
 
 ## Called by the game at every start.
 func start_learning(on: bool) -> void:
@@ -1253,7 +1371,7 @@ func start_learning(on: bool) -> void:
 func show_lesson(id: String) -> void:
 	if id in _lessons_shown or Learning.lesson(id).is_empty():
 		return
-	if lesson_dim.visible or game.tutorial_active:
+	if lesson_dim.visible or game.tutorial_active or (coach_node != null and coach_node.is_active()):
 		if not id in _lesson_queue:
 			_lesson_queue.append(id)
 		return
@@ -1355,16 +1473,20 @@ func _answer(i: int) -> void:
 	var q: Array = Learning.quiz()[_quiz_i]
 	var right := int(q[2])
 	for k in 3:
-		var c := Color(0.3, 0.8, 0.45) if k == right else (Color(0.9, 0.35, 0.3) if k == i else Color(0.3, 0.33, 0.4))
-		_button_styles(quiz_btns[k], c)
+		if k == right:
+			_tinted_button(quiz_btns[k], T_GOOD)
+		elif k == i:
+			_tinted_button(quiz_btns[k], T_BAD)
+		else:
+			_button_styles(quiz_btns[k])
 	if i == right:
 		_quiz_score += 1
 		Sfx.play("sort_ok")
-		quiz_feedback.add_theme_color_override("font_color", Color(0.55, 1.0, 0.6))
+		quiz_feedback.add_theme_color_override("font_color", T_GOOD)
 		quiz_feedback.text = Loc.t("Teisingai! ") + str(q[3])
 	else:
 		Sfx.play("sort_bad")
-		quiz_feedback.add_theme_color_override("font_color", Color(1.0, 0.6, 0.5))
+		quiz_feedback.add_theme_color_override("font_color", T_BAD)
 		quiz_feedback.text = Loc.t("Neteisingai. ") + str(q[3])
 	quiz_next.visible = true
 
@@ -1389,6 +1511,7 @@ func _next_question() -> void:
 		Juice.confetti(self, Vector2(get_viewport().get_visible_rect().size.x * 0.5, 160.0), 60, 1.4)
 
 func show_intro() -> void:
+	_intro_shown_once = true
 	overlay.visible = true
 	intro_box.visible = true
 	start_box.visible = false
@@ -1448,26 +1571,18 @@ func _select_diff(i: int) -> void:
 		secret_label.visible = true
 	else:
 		secret_label.visible = false
-	var cols := [Color(0.35, 0.8, 0.5), Color(0.45, 0.65, 1.0), Color(0.95, 0.45, 0.35)]
 	for k in diff_btns.size():
-		var c: Color = cols[k]
 		var b := diff_btns[k]
+		_button_styles(b)
 		if k == selected_diff:
-			b.add_theme_stylebox_override("normal", _style(c.darkened(0.3), Color.WHITE, 10, 3))
-			b.add_theme_stylebox_override("hover", _style(c.darkened(0.25), Color.WHITE, 10, 3))
-		else:
-			b.add_theme_stylebox_override("normal", _style(c.darkened(0.7), c.darkened(0.3), 10))
-			b.add_theme_stylebox_override("hover", _style(c.darkened(0.55), c, 10))
-		b.add_theme_stylebox_override("pressed", _style(c.darkened(0.2), Color.WHITE, 10, 3))
-		b.add_theme_color_override("font_color", Color.WHITE)
-		b.add_theme_color_override("font_hover_color", Color.WHITE)
-		b.focus_mode = Control.FOCUS_NONE
+			b.add_theme_stylebox_override("normal", _btn_box(Color(T_ACC_FILL, 0.3), T_ACC, 2))
+			b.add_theme_stylebox_override("hover", _btn_box(Color(T_ACC_FILL, 0.4), T_ACC.lightened(0.2), 2))
 
 func _on_start_pressed() -> void:
 	Sfx.play("card", 0.0)
 	Settings.set_value("difficulty", selected_diff)
-	Settings.set_value("learning", learn_check.button_pressed)
-	if learn_check.button_pressed and not _pending_start:
+	if learn_check.button_pressed and not _pending_start and not _intro_shown_once:
+		_intro_shown_once = true
 		# teaching mode: first the "how to play" page, then the game with the guide
 		_pending_start = true
 		show_intro()
@@ -1493,6 +1608,7 @@ func show_start_overlay() -> void:
 # --- Overlays / panels -------------------------------------------------------
 
 func show_report(s: Dictionary, cards: Array) -> void:
+	coach("report")
 	hide_panel()
 	report.visible = true
 	report_title.text = Loc.t("%d-ųjų metų ataskaita") % int(s["year"])
@@ -1502,20 +1618,19 @@ func show_report(s: Dictionary, cards: Array) -> void:
 	report_tiles[3].text = "%d %%" % int(s["circ"])
 	if bool(s["met"]):
 		report_goal_label.text = Loc.t("ES žiedinumo tikslas %d %% – PASIEKTAS!   Premija +€%d") % [int(s["target"]), int(s["reward"])]
-		report_goal_label.add_theme_color_override("font_color", Color(0.6, 1.0, 0.65))
-		report_goal.add_theme_stylebox_override("panel", _style(Color(0.1, 0.25, 0.14), Color(0.4, 0.9, 0.5), 20))
+		report_goal_label.add_theme_color_override("font_color", T_GOOD)
+		report_goal.add_theme_stylebox_override("panel", _callout(T_GOOD))
 	else:
 		report_goal_label.text = Loc.t("ES žiedinumo tikslas %d %% – NEPASIEKTAS.   Bauda -€%d") % [int(s["target"]), int(-float(s["reward"]))]
-		report_goal_label.add_theme_color_override("font_color", Color(1.0, 0.65, 0.6))
-		report_goal.add_theme_stylebox_override("panel", _style(Color(0.28, 0.08, 0.07), Color(1.0, 0.45, 0.4), 20))
+		report_goal_label.add_theme_color_override("font_color", T_BAD)
+		report_goal.add_theme_stylebox_override("panel", _callout(T_BAD))
 	for i in card_btns.size():
 		if i < cards.size():
 			var cat: Dictionary = CATEGORY.get(str(cards[i].get("cat", "fin")), CATEGORY["fin"])
 			var c: Color = cat["color"]
 			card_btns[i].visible = true
-			card_btns[i].add_theme_stylebox_override("normal", _style(c.darkened(0.72), c.darkened(0.25), 12, 2))
-			card_btns[i].add_theme_stylebox_override("hover", _style(c.darkened(0.55), c.lightened(0.2), 12, 3))
-			card_btns[i].add_theme_stylebox_override("pressed", _style(c.darkened(0.4), Color.WHITE, 12, 3))
+			_button_styles(card_btns[i])
+			card_btns[i].add_theme_stylebox_override("hover", _btn_box(Color(T_RAISED.lightened(0.08), 0.96), Color(c, 0.9), 2))
 			card_chip[i].text = "● " + Loc.t(str(cat["label"]))
 			card_chip[i].add_theme_color_override("font_color", c)
 			card_title[i].text = Loc.t(str(cards[i]["title"]))
@@ -1562,7 +1677,7 @@ func show_final(s: Dictionary) -> void:
 			+ Loc.t("Kadangi įmonė žlugo, rezultatas sumažintas perpus. Sunkumas: %s.")) % [
 			game.year, why, Loc.t(str(game.DIFFICULTIES[game.difficulty]["title"]))]
 		return
-	final_title.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
+	final_title.add_theme_color_override("font_color", T_TEXT)
 	var goal := Loc.t("pasiektas") if bool(s["met"]) else Loc.t("nepasiektas")
 	final_text.text = (Loc.t("Sunkumas: %s.  Paskutinių metų ES tikslas %s.\n")
 		+ Loc.t("Rezultatą lemia uždirbti pinigai, planetos būklė ir žiedinumo rodiklis – turtas ant užterštos planetos vertas mažiau.")) % [
@@ -1578,12 +1693,17 @@ func hide_overlay() -> void:
 
 func set_paused(p: bool) -> void:
 	show_pause(p)
+	# the guide must not float over the pause menu
+	if tutorial != null and is_instance_valid(tutorial):
+		tutorial.visible = not p
+	if coach_node != null and coach_node.is_active():
+		coach_node.visible = not p
 
 func show_panel(station: Station) -> void:
 	panel_station = station
 	panel.visible = true
 	var accent := Pipeline.color_of(station.index)
-	panel.add_theme_stylebox_override("panel", _style(Color(0.09, 0.11, 0.16, 0.96), accent.darkened(0.1), 12))
+	panel.add_theme_stylebox_override("panel", _style(Color(0, 0, 0, 0.92), T_LINE, 12, 1))
 	for b in row_btn:
 		_button_styles(b, accent)
 	_styled_for = null
@@ -1611,6 +1731,117 @@ func show_alert(title: String, desc: String) -> void:
 	alert_time = 3.5
 
 # --- Tutorial & sorting --------------------------------------------------------
+
+# --- Guide tips for first-time situations ---------------------------------------
+
+func start_coach(on: bool) -> void:
+	if coach_node == null or not is_instance_valid(coach_node):
+		coach_node = Coach.new()
+		_root.add_child(coach_node)
+		coach_node.setup(game, self, font, bold)
+		coach_node.tip_closed.connect(flush_lessons)
+	coach_node.close()
+	_coach_on = on
+	_coach_seen.clear()
+	_coach_queue.clear()
+
+func coach_disable() -> void:
+	_coach_on = false
+	_coach_queue.clear()
+	if coach_node != null:
+		coach_node.close()
+
+## Ask for a first-time tip (shown once per game, only when the guide is on).
+func coach(id: String, st: Station = null) -> void:
+	if not _coach_on or id in _coach_seen:
+		return
+	_coach_seen.append(id)
+	_coach_queue.append([id, st])
+
+func _try_coach() -> void:
+	if coach_node == null or not _coach_on or _coach_queue.is_empty() or coach_node.is_active():
+		return
+	if not game.running or game.finished or game.tutorial_active or lesson_dim.visible:
+		return
+	if pause_layer != null and pause_layer.visible:
+		return
+	var it: Array = _coach_queue.pop_front()
+	var tip := _coach_tip(str(it[0]), it[1])
+	if not tip.is_empty():
+		coach_node.show_tip(tip)
+
+func _st_pos(st: Station) -> Vector2:
+	return st.global_position
+
+func _coach_tip(id: String, st: Station) -> Dictionary:
+	match id:
+		"fire":
+			if st == null or st.fire <= 0.0:
+				return {}
+			return {"title": Loc.t("Gaisras!"),
+				"text": Loc.t("Stotis dega ir nedirba, o dūmai didina taršą. Spausk ją greitai kelis kartus – kiekvienas paspaudimas gesina. Kol mokaisi, žaidimas sustabdytas."),
+				"target": func(): return _st_pos(st), "r": 70.0, "freeze": true, "button": false,
+				"done": func(): return st.fire <= 0.0,
+				"progress": func(): return Loc.t("\n\nLiko paspaudimų: %d") % int(ceil(st.fire))}
+		"strike":
+			if st == null or st.strike <= 0.0:
+				return {}
+			return {"title": Loc.t("Streikas"),
+				"text": Loc.t("Darbuotojai nori didesnių algų, todėl stotis nedirba. Spausk ją ir sumokėk – arba palauk, kol streikas baigsis, bet tada prarasi gamybą."),
+				"target": func(): return _st_pos(st), "r": 70.0, "freeze": true, "button": true,
+				"done": func(): return st.strike <= 0.0}
+		"flood":
+			return {"title": Loc.t("Potvynis"),
+				"text": Loc.t("Vanduo išplovė stoties sandėlį – daiktai iškrito į sąvartyną. Kuo greičiau stotys apdoroja daiktus, tuo mažiau jų gali pražūti."),
+				"target": func(): return _st_pos(st) if st != null else game.center, "r": 70.0, "freeze": true, "button": true}
+		"storm":
+			return {"title": Loc.t("Vėtra"),
+				"text": Loc.t("Vėtra nupūtė daiktus nuo konvejerio. Nelaimių išvengti negalima, bet greitos stotys sumažina nuostolius."),
+				"target": func(): return game.center, "r": game.ring.radius + 20.0, "freeze": true, "button": true}
+		"heat":
+			return {"title": Loc.t("Karščio banga"),
+				"text": Loc.t("Kurį laiką visos stotys dirba lėčiau. Padėk joms – spausk tas, kuriose kaupiasi daiktai."),
+				"target": func(): return game.center, "r": game.ring.radius + 20.0, "freeze": true, "button": true}
+		"sort_alert":
+			if st == null:
+				return {}
+			return {"title": Loc.t("Mišrios atliekos"),
+				"text": Loc.t("Į Rūšiavimą atvežė sumaišytų atliekų. Paspausk Rūšiavimo stotį – atsidarys rūšiavimo žaidimas."),
+				"target": func(): return _st_pos(st), "r": 70.0, "freeze": true, "button": false,
+				"done": func(): return game.sorting_active}
+		"sort_drag":
+			var s := sorting
+			if s == null or not is_instance_valid(s):
+				return {}
+			s.hold_timer = true
+			return {"title": Loc.t("Rūšiuok"),
+				"text": Loc.t("Pele nutempk daiktą į tinkamą konteinerį: geltonas – plastikas ir metalas, žalias – stiklas, mėlynas – popierius. Kol mokaisi, laikas sustabdytas."),
+				"target": func(): return Rect2(s._pos - Vector2(70, 70), Vector2(140, 140)) if is_instance_valid(s) else Rect2(),
+				"freeze": false, "button": false,
+				"done": func(): return not is_instance_valid(s) or s.drops > 0,
+				"on_close": func(): if is_instance_valid(s): s.hold_timer = false}
+		"landfill":
+			return {"title": Loc.t("Sąvartynas"),
+				"text": Loc.t("Šis daiktas nespėjo būti apdorotas ir iškrito į sąvartyną. Už kiekvieną moki mokestį, o tarša kyla. Pirk greitį ir didesnius sandėlius ten, kur kaupiasi daiktai."),
+				"target": func(): return game.landfill.global_position + Vector2(0, -40), "r": 80.0, "freeze": true, "button": true}
+		"event":
+			return {"title": Loc.t("Rinkos įvykis"),
+				"text": Loc.t("Viršuje – rinkos naujiena. Ji kurį laiką keičia kainas ar paklausą. Stebėk ją ir prisitaikyk."),
+				"target": func(): return Rect2(event_panel.global_position, event_panel.size).grow(4.0),
+				"freeze": true, "button": true}
+		"report":
+			return {"title": Loc.t("Metų pabaiga"),
+				"text": Loc.t("Viršuje matai metų rezultatus ir ES tikslą. Apačioje rinkis VIENĄ investiciją ateinantiems metams – ji padės visą likusį žaidimą."),
+				"target": func(): return _report_cards_rect(), "freeze": false, "button": true}
+	return {}
+
+func _report_cards_rect() -> Rect2:
+	var r := Rect2()
+	for b in card_btns:
+		if is_instance_valid(b) and b.visible:
+			var br := b.get_global_rect()
+			r = br if r.size == Vector2.ZERO else r.merge(br)
+	return r.grow(6.0)
 
 func start_tutorial() -> void:
 	if tutorial != null and is_instance_valid(tutorial):
@@ -1650,6 +1881,7 @@ func flash_overflow() -> void:
 func _process(delta: float) -> void:
 	if secret_btn != null and overlay.visible:
 		secret_btn.queue_redraw()
+	_try_coach()
 	_blink_t += delta
 	if panel != null and panel.visible:
 		var any := false
@@ -1707,39 +1939,31 @@ func refresh() -> void:
 		income_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.45))
 	else:
 		income_label.text = Loc.t("Pajamos: €%d / min") % int(game.income_per_min())
-		income_label.add_theme_color_override("font_color", Color(0.75, 0.85, 0.7))
+		income_label.add_theme_color_override("font_color", T_MUTED)
 	circ_label.text = Loc.t("Žiedinumas: %d %%") % int(game.circularity())
 	loops_label.text = Loc.t("Užbaigti ciklai: %d") % game.loops
 
 	_update_bars()
 
 	var rp: float = game.raw_price()
-	raw_btn.text = Loc.t("Pirkti naują žaliavą – €%d   [Tarpas]\nGreita, bet teršia ir mažina žiedinumą") % int(round(rp))
-	raw_btn.disabled = game.money < rp or not game.running
+	_set_action(raw_btn, Loc.t("Pirkti naują žaliavą") + "  ·  €%d" % int(round(rp)),
+		Loc.t("Greita, bet teršia ir mažina žiedinumą"), Loc.t("Tarpas"), game.money < rp or not game.running)
 	var cp: float = game.cleanup_price()
-	clean_btn.text = Loc.t("Valyti aplinką – €%d   [V]\nTarša -%d %%, kitas valymas bus brangesnis") % [int(cp), int(game.CLEANUP_AMOUNT)]
-	clean_btn.disabled = game.money < cp or not game.running or game.pollution < 1.0
+	_set_action(clean_btn, Loc.t("Valyti aplinką") + "  ·  €%d" % int(cp),
+		Loc.t("Tarša -%d %%, kitas valymas bus brangesnis") % int(game.CLEANUP_AMOUNT), "V",
+		game.money < cp or not game.running or game.pollution < 1.0)
 
 	_refresh_panel()
 
 func _update_bars() -> void:
 	var p: float = clampf(game.pollution / 100.0, 0.0, 1.0)
 	pol_label.text = Loc.t("Tarša: %d %%  –  %s") % [int(game.pollution), game.pollution_stage()]
-	pol_fill.size.x = maxf(0.0, (BAR_W - 4.0) * p)
-	var c: Color
-	if p < 0.2:
-		c = Color(0.35, 0.8, 0.5)
-	elif p < 0.45:
-		c = Color(0.75, 0.75, 0.5)
-	elif p < 0.7:
-		c = Color(0.85, 0.6, 0.3)
-	else:
-		c = Color(0.95, 0.3, 0.2)
-	if pol_flash > 0.0:
-		c = c.lerp(Color(1.0, 0.25, 0.25), pol_flash)
-	pol_fill.color = c
+	pol_fill.ratio = p
+	pol_fill.flash = maxf(pol_flash, 0.0)
 	year_label.text = Loc.t("Metai %d / %d") % [game.year, game.total_years()]
-	year_fill.size.x = (BAR_W - 4.0) * clampf(game.year_time / game.YEAR_LEN, 0.0, 1.0)
+	var ty: int = game.total_years()
+	year_fill.segments = ty
+	year_fill.ratio = (float(game.year - 1) + clampf(game.year_time / game.YEAR_LEN, 0.0, 1.0)) / float(ty)
 
 func _refresh_panel() -> void:
 	if not panel.visible or panel_station == null:
@@ -1749,7 +1973,7 @@ func _refresh_panel() -> void:
 	var st := panel_station
 	var accent := Pipeline.color_of(st.index)
 	panel_title.text = "%d. %s" % [st.index + 1, Pipeline.name_of(st.index)]
-	panel_title.add_theme_color_override("font_color", accent.lightened(0.15))
+	panel_title.add_theme_color_override("font_color", T_TEXT)
 	panel_fact.text = Pipeline.fact_of(st.index)
 	var rec: String = game.recommend(st)
 	if rec != _recommended or st != _styled_for:
@@ -1757,17 +1981,15 @@ func _refresh_panel() -> void:
 		_styled_for = st
 		for j in KINDS.size():
 			if KINDS[j] == _recommended:
-				_button_styles(row_btn[j], Color(0.3, 0.95, 0.45))
-				row_btn[j].add_theme_stylebox_override("normal", _style(Color(0.18, 0.62, 0.3), Color(0.75, 1.0, 0.8), 8, 3))
-				row_btn[j].add_theme_stylebox_override("hover", _style(Color(0.22, 0.72, 0.36), Color.WHITE, 8, 3))
+				_tinted_button(row_btn[j], T_GOOD)
 			else:
-				_button_styles(row_btn[j], Pipeline.color_of(st.index))
+				_button_styles(row_btn[j])
 	for i in KINDS.size():
 		var kind: String = KINDS[i]
 		var lvl := st.level_of(kind)
 		var best := kind == _recommended
 		row_name[i].text = Pipeline.upgrade_name(st.index, kind)
-		row_name[i].add_theme_color_override("font_color", Color(0.55, 1.0, 0.6) if best else Color(0.95, 0.97, 1.0))
+		row_name[i].add_theme_color_override("font_color", T_GOOD if best else T_TEXT)
 		if st.is_maxed(kind):
 			row_desc[i].text = Loc.t("Lygis %d/%d – maksimalus") % [lvl, Station.MAX_LEVEL]
 			row_btn[i].text = "MAX"

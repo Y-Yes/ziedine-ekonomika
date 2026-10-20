@@ -449,8 +449,20 @@ func _draw() -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, slot_col)
 
 	# Name below the station
-	draw_string(font, Vector2(-base_radius, base_radius * ART_SCALE * 0.36 + 12.0), Pipeline.name_of(index),
-		HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, accent.lightened(0.15))
+	# Name below the station: light text on a small dark pill, a tiny colour dot
+	var nm := Pipeline.name_of(index)
+	var nw := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13).x
+	var ny := base_radius * ART_SCALE * 0.36 + 12.0
+	var pill := Rect2(Vector2(-nw * 0.5 - 18.0, ny - 15.0), Vector2(nw + 30.0, 21.0))
+	var psb := StyleBoxFlat.new()
+	psb.bg_color = Color(0.05, 0.07, 0.11, 0.72)
+	psb.border_color = Color(1, 1, 1, 0.12)
+	psb.set_border_width_all(1)
+	psb.set_corner_radius_all(10)
+	psb.anti_aliasing = true
+	draw_style_box(psb, pill)
+	draw_circle(Vector2(pill.position.x + 10.0, ny - 4.5), 3.0, accent)
+	draw_string(font, Vector2(-nw * 0.5 + 4.0, ny), nm, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(0.92, 0.94, 0.97))
 
 
 ## First `frac` of a closed polyline (by length), for the progress outline.

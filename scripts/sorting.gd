@@ -37,6 +37,11 @@ var _correct: int = 0
 var _combo: int = 0
 var _money: float = 0.0
 var _time_left: float = TIME
+## Set by the guide while it explains the mini-game – the clock waits.
+var hold_timer: bool = false
+var drops: int = 0
+## Set by the game: rewards grow later in the game and on harder levels.
+var reward_mult: float = 1.0
 var _done: bool = false
 var _done_t: float = 0.0
 
@@ -109,13 +114,14 @@ func _finish() -> void:
 	_done = true
 	_done_t = 0.0
 	if _correct == _total and _total > 0:
-		_money += 10.0
+		_money += roundf(10.0 * reward_mult)
 		Juice.confetti(self, _panel.get_center(), 40)
 		Sfx.play("confetti", 0.0)
 
 func _drop_into(bin: int) -> void:
 	if _cur < 0 or _fly >= 0.0:
 		return
+	drops += 1
 	_drag = false
 	var ok: bool = int(ITEMS[_cur]["bin"]) == bin
 	_fly_from = _pos
@@ -129,7 +135,7 @@ func _drop_into(bin: int) -> void:
 		_correct += 1
 		_combo += 1
 		var mult := 1.0 + 0.5 * float(mini(_combo - 1, 2))
-		var m := REWARD * mult
+		var m := roundf(REWARD * mult * reward_mult)
 		_money += m
 		Sfx.play("sort_ok", 0.03, 1.0 + 0.08 * float(mini(_combo, 5)))
 		var txt := "+€%s" % (str(int(m)) if m == floor(m) else "%.1f" % m)
@@ -204,7 +210,8 @@ func _process(delta: float) -> void:
 			_close()
 		queue_redraw()
 		return
-	_time_left -= delta
+	if not hold_timer:
+		_time_left -= delta
 	if _time_left <= 0.0:
 		# Time is up: the remaining items go unsorted to the landfill.
 		var left := _queue.size() + (1 if _cur >= 0 else 0)
@@ -242,35 +249,37 @@ func _draw() -> void:
 	var fb := bold if bold != null else f
 	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), Color(0.02, 0.03, 0.06, 0.6))
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.08, 0.1, 0.15, 0.97)
-	sb.border_color = Color("d9c94a")
-	sb.set_border_width_all(3)
-	sb.set_corner_radius_all(18)
+	sb.bg_color = Color(Hud.T_SURF, 0.97)
+	sb.border_color = Hud.T_LINE
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(12)
+	sb.anti_aliasing = true
 	sb.shadow_color = Color(0, 0, 0, 0.5)
 	sb.shadow_size = 18
 	draw_style_box(sb, _panel)
 
 	var cx := _panel.get_center().x
-	_text(fb, Loc.t("MIŠRIOS ATLIEKOS!"), Vector2(cx, _panel.position.y + 42.0), 28, Color("ffe36a"))
+	_text(fb, Loc.t("MIŠRIOS ATLIEKOS!"), Vector2(cx, _panel.position.y + 42.0), 26, Hud.T_TEXT)
 	_text(f, Loc.t("Nutempk daiktą į teisingą konteinerį (arba spausk konteinerį / klavišus 1–3)"),
-		Vector2(cx, _panel.position.y + 68.0), 14, Color(0.78, 0.84, 0.92))
+		Vector2(cx, _panel.position.y + 68.0), 14, Hud.T_MUTED)
 
 	# timer bar
 	var bar := Rect2(_panel.position.x + 40.0, _panel.position.y + 82.0, _panel.size.x - 80.0, 8.0)
-	draw_rect(bar, Color(0.18, 0.2, 0.26))
+	_pill(bar, Color(1, 1, 1, 0.08))
 	var frac := clampf(_time_left / TIME, 0.0, 1.0)
-	var tc := Color(0.45, 0.9, 0.55) if frac > 0.35 else Color(1.0, 0.5, 0.35)
-	draw_rect(Rect2(bar.position, Vector2(bar.size.x * frac, bar.size.y)), tc)
+	var tc := Hud.T_ACC if frac > 0.35 else Hud.T_BAD
+	if frac > 0.0:
+		_pill(Rect2(bar.position, Vector2(maxf(bar.size.y, bar.size.x * frac), bar.size.y)), tc)
 
 	# progress + combo
 	var prog := Loc.t("Daiktas %d / %d") % [mini(_total - _queue.size(), _total), _total]
 	draw_string(f, Vector2(_panel.position.x + 40.0, _panel.position.y + 114.0), prog, HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
-		Color(0.75, 0.82, 0.9))
+		Hud.T_MUTED)
 	if _combo >= 2:
 		var ck := 1.0 + 0.1 * sin(_t * 10.0)
 		var ct := Loc.t("KOMBO ×%.1f") % (1.0 + 0.5 * float(mini(_combo - 1, 2)))
 		draw_string(fb, Vector2(_panel.end.x - 170.0, _panel.position.y + 116.0), ct, HORIZONTAL_ALIGNMENT_LEFT, -1,
-			int(18 * ck), Color(1.0, 0.8, 0.3))
+			int(18 * ck), Hud.T_GOLD)
 
 	# bins
 	for i in 3:
@@ -305,8 +314,8 @@ func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if not _drag and _fly < 0.0 and _correct + (_total - _correct) == _total and _t < 6.0 and _total - _queue.size() == 1:
 			var hy := 30.0 + 12.0 * sin(_t * 5.0)
-			_text(f, Loc.t("Tempk mane žemyn!"), _pos + Vector2(0, -70.0 - 0.0 * hy), 14, Color(1.0, 0.9, 0.5, 0.9))
-			draw_colored_polygon(PackedVector2Array([_pos + Vector2(70, hy - 10), _pos + Vector2(82, hy - 10), _pos + Vector2(76, hy + 4)]), Color(1.0, 0.9, 0.5, 0.9))
+			_text(f, Loc.t("Tempk mane žemyn!"), _pos + Vector2(0, -70.0 - 0.0 * hy), 14, Color(Hud.T_ACC, 0.95))
+			draw_colored_polygon(PackedVector2Array([_pos + Vector2(70, hy - 10), _pos + Vector2(82, hy - 10), _pos + Vector2(76, hy + 4)]), Color(Hud.T_ACC, 0.95))
 		if _fly < 0.0:
 			_text(fb, Loc.t(str(ITEMS[_cur]["name"])), _pos + Vector2(0, 74.0), 17, Color(0.95, 0.97, 1.0))
 
@@ -318,16 +327,25 @@ func _draw() -> void:
 	if _done:
 		var rb := Rect2(cx - 220.0, _panel.position.y + 128.0, 440.0, 150.0)
 		var s2 := StyleBoxFlat.new()
-		s2.bg_color = Color(0.05, 0.07, 0.1, 0.97)
-		s2.border_color = Color(0.45, 0.9, 0.55) if _correct == _total else Color(1.0, 0.8, 0.3)
-		s2.set_border_width_all(2)
-		s2.set_corner_radius_all(14)
+		s2.bg_color = Color(Hud.T_RAISED, 0.98)
+		s2.border_color = Hud.T_GOOD if _correct == _total else Hud.T_LINE
+		s2.set_border_width_all(1)
+		s2.border_width_left = 4
+		s2.set_corner_radius_all(12)
+		s2.anti_aliasing = true
 		draw_style_box(s2, rb)
 		var title := Loc.t("Puikiai! Viskas išrūšiuota!") if _correct == _total else Loc.t("Išrūšiuota %d / %d") % [_correct, _total]
 		_text(fb, title, Vector2(cx, rb.position.y + 44.0), 24, Color(1, 1, 1))
 		_text(fb, "+€%d" % int(_money), Vector2(cx, rb.position.y + 84.0), 26, Color(1.0, 0.85, 0.4))
 		var extra := Loc.t("+€10 premija už tobulą rūšiavimą") if _correct == _total else Loc.t("Neteisingi daiktai iškeliavo į sąvartyną")
-		_text(f, extra, Vector2(cx, rb.position.y + 116.0), 13, Color(0.75, 0.82, 0.9))
+		_text(f, extra, Vector2(cx, rb.position.y + 116.0), 13, Hud.T_MUTED)
+
+func _pill(r: Rect2, c: Color) -> void:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = c
+	sb.set_corner_radius_all(int(r.size.y * 0.5))
+	sb.anti_aliasing = true
+	draw_style_box(sb, r)
 
 func _text(f: Font, s: String, center: Vector2, sz: int, col: Color) -> void:
 	var w := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x
