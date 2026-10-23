@@ -113,7 +113,7 @@ func show_tip(tip: Dictionary) -> void:
 	_title.text = str(tip["title"])
 	_text.text = str(tip["text"])
 	_ok_btn.visible = bool(tip.get("button", true))
-	_target_r = float(tip.get("r", 50.0))
+	_target_r = _read_radius(tip.get("r", 50.0))
 	_bubble.size = Vector2.ZERO
 	_bubble.reset_size.call_deferred()
 	visible = true
@@ -138,6 +138,7 @@ func _process(delta: float) -> void:
 	if _tip.is_empty():
 		return
 	_t += delta
+	_target_r = _read_radius(_tip.get("r", 50.0))
 	var dn = _tip.get("done")
 	if dn is Callable and bool((dn as Callable).call()):
 		Sfx.play("upgrade", 0.0, 1.2)
@@ -214,3 +215,6 @@ func _edge_point(r: Rect2, d: Vector2) -> Vector2:
 	var tx := h.x / maxf(absf(d.x), 0.0001)
 	var ty := h.y / maxf(absf(d.y), 0.0001)
 	return c + d * minf(tx, ty)
+
+func _read_radius(value: Variant) -> float:
+	return float(value.call()) if value is Callable else float(value)

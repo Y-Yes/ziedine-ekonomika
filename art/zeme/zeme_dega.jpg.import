@@ -15,7 +15,7 @@ dest_files=["res://.godot/imported/zeme_dega.jpg-64f564da92e772aaae195888b5a4e05
 
 [params]
 
-compress/mode=1
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -74,6 +74,8 @@ var _hit_mask: BitMap
 var _art_time: float = 0.0
 var _effect_time: float = 0.0
 var _outline := PackedVector2Array()
+var _guide_center := Vector2(0.0, -ART_LIFT)
+var _guide_radius := 0.5
 
 func _ready() -> void:
 	z_index = 1
@@ -83,8 +85,33 @@ func _ready() -> void:
 		_hit_mask = BitMap.new()
 		_hit_mask.create_from_image_alpha(StationMotion.base(index, _sheet).get_image(), 0.15)
 		_outline = GameArt.footprint(StationMotion.base(index, _sheet))
+		_measure_guide_highlight()
 	recompute()
 	set_process(true)
+
+func _measure_guide_highlight() -> void:
+	# Measure opaque artwork once, including the building above the slab.
+	var dims := _hit_mask.get_size()
+	var lo := Vector2(dims)
+	var hi := Vector2.ZERO
+	for y in range(0, dims.y, 4):
+		for x in range(0, dims.x, 4):
+			if _hit_mask.get_bit(x, y):
+				lo = lo.min(Vector2(x, y))
+				hi = hi.max(Vector2(x, y))
+	var center := (lo + hi) * 0.5
+	var radius := 0.0
+	for y in range(0, dims.y, 4):
+		for x in range(0, dims.x, 4):
+			if _hit_mask.get_bit(x, y):
+				radius = maxf(radius, center.distance_to(Vector2(x, y)))
+	_guide_center = center / Vector2(dims) - Vector2(0.5, 0.5 + ART_LIFT)
+	_guide_radius = (radius + 4.0) / float(dims.x)
+
+func guide_highlight() -> Dictionary:
+	var art := base_radius * ART_SCALE
+	return {"center": to_global(_guide_center * art),
+		"radius": (_guide_radius * art + 10.0) * maxf(absf(global_scale.x), absf(global_scale.y))}
 
 # --- Stats & upgrades ----------------------------------------------------------
 

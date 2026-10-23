@@ -83,3 +83,10 @@ Nauji rastriniai šaltiniai sukurti integruotu `image_gen` su tikru permatomumu.
 Bendras apšvietimas sumažintas, kad paviršiai nebūtų išbalę; perrenderintos visos 12 kortelių. Saulės elektrinė turi tamsius elementus su smulkiu tinkleliu ir kontaktais, tvirtinimo varžtus, atramas ir smailėjančius saulės spindulius vietoje rutuliukų. Procento antspaudas sudarytas iš tikrų reljefinių žiedų bei įstrižos juostelės, be „−20 %“ užrašo. Knygos tekstas juda kartu su išlenktu puslapiu; lapų simboliai turi lenktus paviršius ir gyslą. Sandėliui pridėtos stogo briaunos ir šviestuvai; portfeliui spynelės ir kniedės; gesintuvui manometras bei etiketė.
 
 Taromato butelio eiga vienkryptė: `z` nuo 0.74 iki 0.14, galas telpa korpuse. Butelis visiškai pasislepia prieš ciklo pabaigą, o naujas palaipsniui pasirodo išorėje. Įsiurbimo anga turi tamsią atvirą movą. Stoties liepsnos 32 % aukštesnės, išlaikant tą patį pagrindo tašką.
+
+
+## Vedlys ir Web vaizdo kokybė
+
+Vedlio ir įvykių patarimų apskritimų centras bei spindulys apskaičiuojami iš kiekvienos salos nepermatomų pikselių, o ne iš seno 52/70 px dydžio. Skaičiavimas išsaugomas po pradinio kadro matavimo; keičiant mastelį taikomas dabartinis `ART_SCALE`. Taip apimamas pastatas ir visas salos pagrindas, rodyklė remiasi į apskritimo kraštą.
+
+Planetos šešėliuoklyje tekstūrų išvestinės skaičiuojamos ir disko išorėje, kad WebGL krašte neliktų neapibrėžtų mėginių. Planetos ir atmosferos spalvos sujungiamos premultiplied erdvėje ir grąžinamos su straight alpha. Visų septynių planetos žemėlapių importas dabar be papildomo nuostolingo glaudinimo; HiDPI įjungtas aiškiai. Salų ir kortelių atlasai jau anksčiau buvo eksportuojami lossless, su mipmaps ir be dydžio ribojimo. `canvas_items` leidžia piešti tikslinio lango raiška; naršyklės Web šablonas atsižvelgia į `devicePixelRatio`.

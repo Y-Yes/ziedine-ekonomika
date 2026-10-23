@@ -1842,7 +1842,10 @@ func _try_coach() -> void:
 		coach_node.show_tip(tip)
 
 func _st_pos(st: Station) -> Vector2:
-	return st.global_position
+	return st.guide_highlight()["center"]
+
+func _st_radius(st: Station) -> float:
+	return float(st.guide_highlight()["radius"]) if st != null else 70.0
 
 func _coach_tip(id: String, st: Station) -> Dictionary:
 	match id:
@@ -1851,7 +1854,7 @@ func _coach_tip(id: String, st: Station) -> Dictionary:
 				return {}
 			return {"title": Loc.t("Gaisras!"),
 				"text": Loc.t("Stotis dega ir nedirba, o dūmai didina taršą. Spausk ją greitai kelis kartus – kiekvienas paspaudimas gesina. Kol mokaisi, žaidimas sustabdytas."),
-				"target": func(): return _st_pos(st), "r": 70.0, "freeze": true, "button": false,
+				"target": func(): return _st_pos(st), "r": func(): return _st_radius(st), "freeze": true, "button": false,
 				"done": func(): return st.fire <= 0.0,
 				"progress": func(): return Loc.t("\n\nLiko paspaudimų: %d") % int(ceil(st.fire))}
 		"strike":
@@ -1859,12 +1862,12 @@ func _coach_tip(id: String, st: Station) -> Dictionary:
 				return {}
 			return {"title": Loc.t("Streikas"),
 				"text": Loc.t("Darbuotojai nori didesnių algų, todėl stotis nedirba. Spausk ją ir sumokėk – arba palauk, kol streikas baigsis, bet tada prarasi gamybą."),
-				"target": func(): return _st_pos(st), "r": 70.0, "freeze": true, "button": true,
+				"target": func(): return _st_pos(st), "r": func(): return _st_radius(st), "freeze": true, "button": true,
 				"done": func(): return st.strike <= 0.0}
 		"flood":
 			return {"title": Loc.t("Potvynis"),
 				"text": Loc.t("Vanduo išplovė stoties sandėlį – daiktai iškrito į sąvartyną. Kuo greičiau stotys apdoroja daiktus, tuo mažiau jų gali pražūti."),
-				"target": func(): return _st_pos(st) if st != null else game.center, "r": 70.0, "freeze": true, "button": true}
+				"target": func(): return _st_pos(st) if st != null else game.center, "r": func(): return _st_radius(st), "freeze": true, "button": true}
 		"storm":
 			return {"title": Loc.t("Vėtra"),
 				"text": Loc.t("Vėtra nupūtė daiktus nuo konvejerio. Nelaimių išvengti negalima, bet greitos stotys sumažina nuostolius."),
@@ -1878,7 +1881,7 @@ func _coach_tip(id: String, st: Station) -> Dictionary:
 				return {}
 			return {"title": Loc.t("Mišrios atliekos"),
 				"text": Loc.t("Į Rūšiavimą atvežė sumaišytų atliekų. Paspausk Rūšiavimo stotį – atsidarys rūšiavimo žaidimas."),
-				"target": func(): return _st_pos(st), "r": 70.0, "freeze": true, "button": false,
+				"target": func(): return _st_pos(st), "r": func(): return _st_radius(st), "freeze": true, "button": false,
 				"done": func(): return game.sorting_active}
 		"sort_drag":
 			var s := sorting

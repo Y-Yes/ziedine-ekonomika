@@ -40,7 +40,7 @@ func setup(g: Node, h: Node, f: Font, fb: Font) -> void:
 			"target": func(): return game.center, "r": 120.0, "wait": ""},
 		{"title": Loc.t("Rankinis darbas"),
 			"text": Loc.t("Kai stotyje laukia daiktai, spausk ją daug kartų – kiekvienas paspaudimas pagreitina darbą, o keli paspaudimai iškart apdoroja daiktą. Kuo greičiau spaudi, tuo daugiau pagamini! Pabandyk su Surinkimu – paspausk 3 kartus."),
-			"target": func(): return game.stations[1].position, "r": 52.0, "wait": "work"},
+			"target": func(): return game.stations[1].guide_highlight()["center"], "r": func(): return game.stations[1].guide_highlight()["radius"], "wait": "work"},
 		{"title": Loc.t("Investuok"),
 			"text": Loc.t("Dešinėje atsidarė stoties patobulinimai. Nupirk vieną – pvz., greitį. Lentelėje kairėje žaliai švyti labiausiai užsipildžiusi stotis – ją verta patobulinti pirmiausia, o dešinėje mirksi tai, kas labiausiai apsimoka."),
 			"target": func(): return _ctl_rect([hud.panel]), "r": 0.0, "wait": "upgrade"},
@@ -145,7 +145,7 @@ func _go(i: int) -> void:
 	var waiting := str(s["wait"]) != ""
 	_next_btn.visible = not waiting
 	_next_btn.text = Loc.t("Pradėti!") if i == _steps.size() - 1 else Loc.t("Toliau")
-	_target_r = float(s["r"])
+	_target_r = _read_radius(s["r"])
 	# shrink the bubble to fit the new text (a PanelContainer never shrinks by itself)
 	_bubble.size = Vector2.ZERO
 	_bubble.reset_size.call_deferred()
@@ -174,6 +174,7 @@ func _process(delta: float) -> void:
 	_t += delta
 	if _step >= 0:
 		var s: Dictionary = _steps[_step]
+		_target_r = _read_radius(s["r"])
 		var tf: Callable = s["target"]
 		var tv = tf.call()
 		if tv is Rect2:
@@ -249,3 +250,6 @@ func _edge_point(r: Rect2, d: Vector2) -> Vector2:
 	var tx := h.x / maxf(absf(d.x), 0.0001)
 	var ty := h.y / maxf(absf(d.y), 0.0001)
 	return c + d * minf(tx, ty)
+
+func _read_radius(value: Variant) -> float:
+	return float(value.call()) if value is Callable else float(value)
