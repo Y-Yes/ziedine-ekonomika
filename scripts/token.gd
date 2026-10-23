@@ -8,7 +8,7 @@
 class_name Token
 extends Node2D
 
-const ICONS_PATH := "res://art/zetonai.png"   # 6 square icons side by side
+const ICONS_PATH := "res://art/02b/tokens.png"   # 3 columns by 2 rows, without discs
 const ICON_COUNT := 6
 
 static var _icons: Texture2D
@@ -39,12 +39,10 @@ func _draw() -> void:
 	# Little "pop" when the token changes form.
 	var k := 1.0 + 0.35 * _pop
 	if _icons != null:
-		var fw := float(_icons.get_width()) / float(ICON_COUNT)
 		var sz := radius * 3.2 * k
 		draw_circle(Vector2(0, radius * 0.5), radius * 1.1 * k, Color(0, 0, 0, 0.18))
-		draw_texture_rect_region(_icons,
-			Rect2(Vector2(-sz * 0.5, -sz * 0.5), Vector2(sz, sz)),
-			Rect2(fw * Pipeline.norm(form), 0.0, fw, float(_icons.get_height())))
+		draw_texture_rect(GameArt.frame("tokens", Pipeline.norm(form)),
+			Rect2(Vector2(-sz * 0.5, -sz * 0.5), Vector2(sz, sz)), false)
 	else:
 		draw_circle(Vector2.ZERO, radius * k, c)
 		draw_arc(Vector2.ZERO, radius - 1.5, 0.0, TAU, 20, c.darkened(0.35), 2.0, true)

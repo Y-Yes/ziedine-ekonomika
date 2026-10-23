@@ -20,11 +20,17 @@ config/icon="res://icon.svg"
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[input_devices]
+
+pointing/emulate_mouse_from_touch=true
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
 
 [rendering]
+
+textures/vram_compression/import_etc2_astc=true
 
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"

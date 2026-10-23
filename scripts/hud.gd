@@ -1036,7 +1036,7 @@ func _build_report() -> void:
 	vb.add_child(hb)
 	for i in 3:
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(210, 205)
+		b.custom_minimum_size = Vector2(210, 255)
 		b.focus_mode = Control.FOCUS_NONE
 		var idx := i
 		b.pressed.connect(func(): Sfx.play("card", 0.0); game.choose_card(idx))
@@ -1060,7 +1060,7 @@ func _build_report() -> void:
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cv.add_child(chip)
 		var ic := AnimIcon.new()
-		ic.custom_minimum_size = Vector2(64, 64)
+		ic.custom_minimum_size = Vector2(84, 84)
 		ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		cv.add_child(ic)
 		var tl := Label.new()
@@ -1693,10 +1693,22 @@ func show_report(s: Dictionary, cards: Array) -> void:
 			card_chip[i].text = "● " + Loc.t(str(cat["label"]))
 			card_chip[i].add_theme_color_override("font_color", c)
 			card_title[i].text = Loc.t(str(cards[i]["title"]))
-			card_icons[i].set_sheet("res://art/kortos/%s.png" % str(cards[i]["id"]))
+			card_icons[i].set_perk(str(cards[i]["id"]))
 			card_desc[i].text = Loc.t(str(cards[i]["desc"])).replace("\n", " ")
 		else:
 			card_btns[i].visible = false
+	_fit_report_cards.call_deferred()
+
+func _fit_report_cards() -> void:
+	# Buttons do not inherit their child's minimum height. Measure after text
+	# wrapping, so long translated titles and descriptions stay inside the card.
+	await get_tree().process_frame
+	var height := 255.0
+	for button in card_btns:
+		if button.visible:
+			height = maxf(height, button.get_child(0).get_combined_minimum_size().y)
+	for button in card_btns:
+		button.custom_minimum_size.y = ceilf(height)
 
 func hide_report() -> void:
 	if report != null:

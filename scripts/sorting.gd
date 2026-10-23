@@ -10,8 +10,8 @@ extends Control
 
 signal finished(correct: int, total: int, money: float)
 
-const ITEMS_TEX := "res://art/rusiavimas_daiktai.png"
-const BINS_TEX := "res://art/konteineriai.png"
+const ITEMS_TEX := "res://art/02b/sorting_items.png"
+const BINS_TEX := "res://art/02b/bins.png"
 const ITEMS := [
 	{"name": "PET butelis", "bin": 0},
 	{"name": "Skardinė", "bin": 0},
@@ -75,6 +75,7 @@ func open(g: Node, count: int, f: Font, fb: Font) -> void:
 	game = g
 	font = f
 	bold = fb
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_items_tex = load(ITEMS_TEX) if ResourceLoader.exists(ITEMS_TEX) else null
 	_bins_tex = load(BINS_TEX) if ResourceLoader.exists(BINS_TEX) else null
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -290,9 +291,8 @@ func _draw() -> void:
 		if _hover_bin == i and _cur >= 0:
 			draw_circle(r.get_center() + Vector2(0, 20), 86.0, Color(BIN_COLORS[i], 0.18))
 		if _bins_tex != null:
-			var bw := float(_bins_tex.get_width()) / 6.0
 			var idx := i + (3 if _bin_open[i] > 0.05 or (_hover_bin == i and _drag) else 0)
-			draw_texture_rect_region(_bins_tex, rr, Rect2(bw * idx, 0, bw, float(_bins_tex.get_height())))
+			draw_texture_rect(GameArt.frame("bins", idx), rr, false)
 		if _bin_flash[i] > 0.0:
 			var fc := Color(0.4, 1.0, 0.5, 0.35 * _bin_flash[i]) if _bin_ok[i] else Color(1.0, 0.3, 0.25, 0.4 * _bin_flash[i])
 			draw_circle(r.get_center() + Vector2(0, 20), 80.0, fc)
@@ -301,7 +301,6 @@ func _draw() -> void:
 
 	# current item
 	if _cur >= 0 and _items_tex != null:
-		var iw := float(_items_tex.get_width()) / float(ITEMS.size())
 		var k := _appear * (1.0 + 0.08 * sin(_t * 5.0)) * (0.6 if _fly >= 0.0 and _fly > 0.6 else 1.0)
 		if _drag:
 			k *= 1.12
@@ -309,8 +308,7 @@ func _draw() -> void:
 		if not _drag and _fly < 0.0:
 			draw_circle(_pos + Vector2(0, 52), 34.0, Color(0, 0, 0, 0.25))
 		draw_set_transform(_pos, _rot, Vector2.ONE)
-		draw_texture_rect_region(_items_tex, Rect2(-Vector2(sz, sz) * 0.5, Vector2(sz, sz)),
-			Rect2(iw * _cur, 0, iw, float(_items_tex.get_height())))
+		draw_texture_rect(GameArt.frame("sorting_items", _cur), Rect2(-Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if not _drag and _fly < 0.0 and _correct + (_total - _correct) == _total and _t < 6.0 and _total - _queue.size() == 1:
 			var hy := 30.0 + 12.0 * sin(_t * 5.0)

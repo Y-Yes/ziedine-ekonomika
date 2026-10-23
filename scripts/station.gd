@@ -52,26 +52,28 @@ var upgrade_glow: float = 0.0    # purchase feedback 1 -> 0
 var _timer: float = 0.0
 
 # --- 02B dioramas ------------------------------------------------------------
-# Separate transparent sprites; processing feedback and floating motion are
-# drawn at runtime so UI thumbnails use exactly the same art as the stations.
+# Whole-island frame strips; UI thumbnails use the same animation artwork.
 const ART := [
-	"res://art/02b/1_naudotojas.png",
-	"res://art/02b/2_surinkimas.png",
-	"res://art/02b/3_rusiavimas.png",
-	"res://art/02b/4_perdirbimas.png",
-	"res://art/02b/5_gamykla.png",
-	"res://art/02b/6_parduotuve.png",
+	"res://art/02b/approved_loops/1_naudotojas.png",
+	"res://art/02b/approved_loops/2_surinkimas.png",
+	"res://art/02b/approved_loops/3_rusiavimas.png",
+	"res://art/02b/approved_loops/4_perdirbimas.png",
+	"res://art/02b/approved_loops/5_gamykla.png",
+	"res://art/02b/approved_loops/6_parduotuve.png",
 ]
 ## Island art size relative to base_radius, and where its ground ellipse sits.
-const ART_SCALE := 4.0
+const ART_SCALE := 3.6
 const ART_LIFT := 0.15     # tile centre is 65% down the transparent sprite
 const TILE_HW := 0.46      # half width of the tile's top diamond (x art size)
 const TILE_HH := 0.215     # half height of that diamond
 const HALO_SQUASH := 0.53
 
+var _fire_sheet: Texture2D
 var _sheet: Texture2D
 var _hit_mask: BitMap
 var _art_time: float = 0.0
+var _effect_time: float = 0.0
+var _outline := PackedVector2Array()
 
 func _ready() -> void:
 	z_index = 1
@@ -79,7 +81,8 @@ func _ready() -> void:
 	if index >= 0 and index < ART.size() and ResourceLoader.exists(ART[index]):
 		_sheet = load(ART[index])
 		_hit_mask = BitMap.new()
-		_hit_mask.create_from_image_alpha(_sheet.get_image(), 0.15)
+		_hit_mask.create_from_image_alpha(StationMotion.base(index, _sheet).get_image(), 0.15)
+		_outline = GameArt.footprint(StationMotion.base(index, _sheet))
 	recompute()
 	set_process(true)
 
@@ -238,7 +241,11 @@ func manual_process() -> bool:
 
 func _process(real_delta: float) -> void:
 	var delta := real_delta * sim_speed
-	_art_time += delta
+	_effect_time += delta
+	if fire <= 0.0 and strike <= 0.0:
+		# Integrate speed, rather than multiplying the absolute clock: changing
+		# from idle to working must never jump to another animation pose.
+		_art_time += delta * (1.0 if not buffer.is_empty() else 0.75)
 	queue_redraw()
 
 	if flash > 0.0:
@@ -276,27 +283,31 @@ func _release_one() -> void:
 
 func _draw() -> void:
 	var accent := Pipeline.color_of(index)
-	var k := 1.0 - 0.1 * sin(punch * PI)   # squish on click
-	var r := base_radius * k
+	var r := base_radius
 
 	# Glowing outline around the square tile (drawn behind it). It doubles as
 	# the progress indicator: a bright line runs round as the next item is made.
 	var art := r * ART_SCALE
 	var busy := not buffer.is_empty()
-	var isl_bob := sin(Time.get_ticks_msec() / 900.0 + float(index) * 1.3) * 1.5
-	var hc := Vector2(0.0, isl_bob)
-	var hw := art * TILE_HW * 1.1
-	var hh := art * TILE_HH * 1.1
+	var hc := Vector2.ZERO
+	var hw := art * TILE_HW
+	var hh := art * TILE_HH
 	var hr := hw   # used by the fire glow below
 	var dia := PackedVector2Array([hc + Vector2(0, -hh), hc + Vector2(hw, 0), hc + Vector2(0, hh), hc + Vector2(-hw, 0), hc + Vector2(0, -hh)])
+	var art_rect := Rect2(Vector2(-art * 0.5, -art * (0.5 + ART_LIFT)), Vector2(art, art))
+	if not _outline.is_empty():
+		dia.clear()
+		for point in _outline:
+			var p := art_rect.position + point * art_rect.size
+			dia.append(hc + (p - hc) * 1.015)
 	if upgrade_glow > 0.0:
 		var g := 1.0 + 0.25 * upgrade_glow
 		var big := PackedVector2Array()
 		for q in dia:
 			big.append(hc + (q - hc) * g)
 		draw_colored_polygon(big, Color(accent, 0.3 * upgrade_glow))
-	draw_polyline(dia, Color(accent, 0.25), 7.0, true)
-	draw_polyline(dia, Color(accent, 0.7 if not busy else 0.45), 2.0, true)
+	draw_polyline(dia, Color(accent, 0.16), 4.0, true)
+	draw_polyline(dia, Color(accent, 0.65 if not busy else 0.45), 1.3, true)
 	if busy:
 		var frac := clampf(_timer * effective_rate(), 0.0, 1.0)
 		if frac > 0.01:
@@ -304,39 +315,50 @@ func _draw() -> void:
 	if selected:
 		var sel := PackedVector2Array()
 		for q in dia:
-			sel.append(hc + (q - hc) * 1.12)
+			sel.append(hc + (q - hc) * 1.035)
 		draw_polyline(sel, Color(1, 1, 1, 0.9), 2.5, true)
 	if punch > 0.0:
 		draw_polyline(dia, Color(1, 1, 1, punch * 0.8), 4.0, true)
+	# Every tile outline is behind the opaque island, including warnings.
+	# Drawing these after the sprite made the rear edge cut across machinery.
+	if hazard_mult < 1.0:
+		draw_polyline(dia, Color(1.0, 0.55, 0.15, 0.6), 2.0, true)
+	if buffer.size() >= capacity:
+		var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
+		draw_polyline(dia, Color(1.0, 0.3, 0.25, 0.35 + 0.4 * pulse), 2.5, true)
+	if sort_alert > 0.0:
+		var alert_part := _diamond_part(dia, clampf(sort_alert / 12.0, 0.0, 1.0))
+		if alert_part.size() >= 2:
+			draw_polyline(alert_part, Color(1.0, 0.85, 0.2, 0.9), 3.0, true)
+	if flash > 0.0:
+		draw_polyline(dia, Color(1.0, 0.25, 0.25, flash), 5.0, true)
 
-	# Transparent diorama. Bobs gently; the processing outline stays live.
+	# The ground stays registered. Click feedback belongs to the outline only.
 	if _sheet != null:
-		draw_texture_rect(_sheet,
-			Rect2(Vector2(-art * 0.5, -art * 0.5 - art * ART_LIFT + isl_bob), Vector2(art, art)), false)
-	# Factory steam is separate from the sprite and stops when work stops.
-	if index == 4 and busy and fire <= 0.0 and strike <= 0.0:
-		for j in 5:
-			var phase := fmod(_art_time * 0.6 + float(j) * 0.2, 1.0)
-			var puff := Vector2(art * (0.25 + phase * 0.06), -art * (0.49 + phase * 0.2) + isl_bob)
-			draw_circle(puff, art * (0.018 + phase * 0.025), Color(0.8, 0.88, 0.95, (1.0 - phase) * 0.38))
-
+		StationMotion.draw(self, index, _sheet, art_rect, _art_time, busy and fire <= 0.0 and strike <= 0.0)
 	# Fire (disaster): flickering flames over the station
 	if fire > 0.0:
 		var tt := Time.get_ticks_msec() / 1000.0
-		# warm glow on the island + layered flame blobs rising from it
+		# Whole pre-rendered flame clusters retain smooth curved edges at the
+		# actual game size. Their bases remain on the roof, not rising discs.
 		draw_set_transform(hc, 0.0, Vector2(1.0, HALO_SQUASH))
-		draw_circle(Vector2.ZERO, hr * 1.05, Color(1.0, 0.35, 0.05, 0.22 + 0.06 * sin(tt * 9.0)))
+		draw_circle(Vector2.ZERO, hr * 0.85, Color(1.0, 0.26, 0.015, 0.18 + 0.04 * sin(tt * 7.0)))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		var fy := -art * 0.1
-		for j in 14:
-			var ph := fmod(tt * 1.6 + float(j) * 0.37, 1.0)
-			var fx := sin(float(j) * 2.3) * art * 0.22 + sin(tt * 3.0 + j) * 3.0
-			var p := Vector2(fx * (1.0 - ph * 0.5), fy - ph * art * 0.42)
-			var rad := (1.0 - ph) * art * 0.085 + 2.0
-			var col := Color(1.0, 0.9, 0.35).lerp(Color(1.0, 0.45, 0.1), clampf(ph * 1.6, 0.0, 1.0))
-			col = col.lerp(Color(0.55, 0.12, 0.05), clampf((ph - 0.6) * 2.5, 0.0, 1.0))
-			col.a = 0.9 * (1.0 - ph * 0.6)
-			draw_circle(p, rad, col)
+		var fy := -art * 0.10
+		if _fire_sheet == null:
+			_fire_sheet = load("res://art/02b/fire_loop.png")
+		for j in 3:
+			var extent := art * (0.60 if j == 1 else 0.44)
+			var origin := Vector2((j-1)*art*0.12,fy-absf(float(j-1))*art*0.018)
+			var frame := int(tt*24.0+float(j)*27.0)%96
+			var source := Rect2((frame%12)*256,(frame/12)*256,256,256)
+			var flame_size:=Vector2(extent,extent*1.32)
+			draw_texture_rect_region(_fire_sheet,Rect2(origin-Vector2(flame_size.x*0.5,flame_size.y*0.82),flame_size),source)
+		# Small bright embers rise from the flames rather than covering the roof.
+		for j in 5:
+			var ember_phase:=fmod(tt*0.55+float(j)*0.20,1.0)
+			var ember_pos:=Vector2(sin(float(j)*2.3)*art*0.12+ember_phase*7.0,fy-art*0.22-ember_phase*art*0.42)
+			draw_circle(ember_pos,1.0+0.7*(1.0-ember_phase),Color(1.0,0.75,0.08,1.0-ember_phase))
 		for j in 4:
 			var ph2 := fmod(tt * 0.7 + float(j) * 0.25, 1.0)
 			var sp := Vector2(sin(float(j) * 1.9) * 10.0 + ph2 * 8.0, fy - art * 0.4 - ph2 * art * 0.35)
@@ -361,9 +383,6 @@ func _draw() -> void:
 		var w2 := fs.get_string_size(t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12).x
 		draw_string_outline(fs, Vector2(-w2 * 0.5, -_top_r() - 34.0), t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, 4, Color(0, 0, 0, 0.85))
 		draw_string(fs, Vector2(-w2 * 0.5, -_top_r() - 34.0), t2, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, Color(1.0, 0.7, 0.6))
-	# Heat wave tint
-	if hazard_mult < 1.0:
-		draw_arc(Vector2.ZERO, r - 3.0, 0.0, TAU, 48, Color(1.0, 0.55, 0.15, 0.6), 3.0, true)
 
 	# Economies of scale active – green chip
 	if scale_active() and fire <= 0.0 and strike <= 0.0:
@@ -375,10 +394,6 @@ func _draw() -> void:
 		draw_rect(Rect2(cp - Vector2(bw * 0.5, 8.0), Vector2(bw, 16.0)), Color(0.2, 0.6, 0.32, 0.95))
 		draw_string(fc, cp + Vector2(-bw * 0.5 + 5.0, 4.0), bonus, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11, Color.WHITE)
 
-	# Full storage warning – pulsing red ring
-	if buffer.size() >= capacity:
-		var pf := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
-		draw_arc(Vector2.ZERO, base_radius + 4.0, 0.0, TAU, 48, Color(1.0, 0.3, 0.25, 0.35 + 0.4 * pf), 3.0, true)
 
 	# Mixed waste waiting (sorting mini-game)
 	if sort_alert > 0.0:
@@ -389,13 +404,10 @@ func _draw() -> void:
 		draw_circle(bp, 12.0, Color(0.95, 0.55, 0.1))
 		var fnt := ThemeDB.fallback_font
 		draw_string(fnt, bp + Vector2(-4.0, 7.0), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color.WHITE)
-		draw_arc(Vector2.ZERO, base_radius + 9.0, -PI * 0.5, -PI * 0.5 + TAU * clampf(sort_alert / 12.0, 0.0, 1.0), 48,
-			Color(1.0, 0.85, 0.2, 0.9), 3.0, true)
 
 
 	# Overflow flash
 	if flash > 0.0:
-		draw_arc(Vector2.ZERO, base_radius + 3.0, 0.0, TAU, 48, Color(1.0, 0.25, 0.25, flash), 7.0, true)
 		# Pollution smog puffs rising from the overflowing station.
 		var g := 1.0 - flash
 		for j in 4:
@@ -411,8 +423,6 @@ func _draw() -> void:
 	var per_row := 10
 	var bw2 := 7.0
 	var gap := 2.0
-	var rows := int(ceil(float(capacity) / float(per_row)))
-	var half_full := n * 2 >= capacity
 	for i in capacity:
 		var row := i / per_row
 		var col := i % per_row
@@ -427,11 +437,6 @@ func _draw() -> void:
 		else:
 			draw_circle(sc, bw2 * 0.55, Color(0.06, 0.08, 0.12, 0.85))
 			draw_arc(sc, bw2 * 0.5, 0.0, TAU, 16, Color(0.55, 0.62, 0.72, 0.7), 1.0, true)
-	# half-full marker (economies of scale threshold)
-	if cap_level > 1:
-		var hx := (float(mini(per_row, capacity)) * 0.5) * (bw2 + gap)
-		var hy := -_top_r() - 18.0 - float(rows - 1) * (bw2 + 3.0) - 4.0
-		draw_line(Vector2(-hx - 2.0, hy), Vector2(hx, hy), Color(0.45, 0.9, 0.55, 0.9 if half_full else 0.35), 2.0)
 
 	var font := ThemeDB.fallback_font
 
@@ -483,7 +488,9 @@ func _diamond_part(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
 
 ## Distance from the station centre to just above the tile's buildings.
 func _top_r() -> float:
-	return base_radius * ART_SCALE * 0.52
+	# Tall truck, robot and chimney need more clearance; the bottom station's
+	# counter stays lower, in the gap between the planet and its hopper.
+	return base_radius * ART_SCALE * (0.49 if index in [1, 2, 4] else 0.39)
 
 
 ## Buildings extend above the tile. Their visible pixels are clickable too;
@@ -493,9 +500,8 @@ func contains_point(local_point: Vector2) -> bool:
 		return true
 	if _hit_mask == null:
 		return false
-	var art := base_radius * ART_SCALE * (1.0 - 0.1 * sin(punch * PI))
-	var bob := sin(Time.get_ticks_msec() / 900.0 + float(index) * 1.3) * 1.5
-	var rect := Rect2(Vector2(-art * 0.5, -art * (0.5 + ART_LIFT) + bob), Vector2(art, art))
+	var art := base_radius * ART_SCALE
+	var rect := Rect2(Vector2(-art * 0.5, -art * (0.5 + ART_LIFT)), Vector2(art, art))
 	if not rect.has_point(local_point):
 		return false
 	var uv := (local_point - rect.position) / rect.size

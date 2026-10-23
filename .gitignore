@@ -30,3 +30,7 @@ mono_crash.*.json
 
 # Web versija (žaidimas internete: itch.io)
 Zaidimas_HTML/
+
+/build/
+
+/ziedine-ekonomika-itchio.zip

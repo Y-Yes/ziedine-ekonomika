@@ -37,7 +37,10 @@ void fragment() {
 
 	// outer atmosphere glow
 	float glow = pow(clamp(1.0 - (r - 1.0) / 0.22, 0.0, 1.0), 2.4) * 0.75;
-	vec4 outc = vec4(atmo, glow * step(1.0, r));
+	// Continue the atmosphere beneath the antialiased planet edge. Cutting
+	// its alpha to zero inside r=1 left a transparent dark seam at the limb.
+	vec4 outc = vec4(atmo, glow);
+	float edge_width = max(fwidth(r) * 1.5, 0.002);
 
 	if (r < 1.0) {
 		vec3 n = vec3(p.x, -p.y, sqrt(1.0 - r * r));
@@ -81,7 +84,7 @@ void fragment() {
 		float fres = pow(1.0 - n.z, 3.0);
 		lit = mix(lit, atmo * (0.45 + 1.0 * day), fres * 0.8);
 
-		float edge = smoothstep(1.0, 0.985, r);
+		float edge = 1.0 - smoothstep(1.0 - edge_width, 1.0, r);
 		COLOR = mix(outc, vec4(lit, 1.0), edge);
 	} else {
 		COLOR = outc;

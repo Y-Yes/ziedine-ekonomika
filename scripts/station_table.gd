@@ -121,7 +121,7 @@ func _draw() -> void:
 		var sh := _sheets[i]
 		var ir := Rect2(PAD + 1.0, cy - ICON * 0.5 - 1.0, ICON + 4.0, ICON + 4.0)
 		if sh != null:
-			draw_texture_rect(sh, ir, false)
+			StationMotion.draw(self, i, sh, ir, 4.0, false)
 		if st.fire > 0.0:
 			draw_circle(ir.get_center(), ICON * 0.45, Color(1.0, 0.4, 0.1, 0.45 + 0.3 * sin(_t * 12.0)))
 

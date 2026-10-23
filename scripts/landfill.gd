@@ -1,57 +1,56 @@
 ## Landfill
 ##
 ## Visible pile of everything that fell out of the loop (overflows, floods).
-## Each item adds a greyed-out icon to the mound; a big pile attracts flies.
+## Starts empty. Every overflow adds one individual object on the dirt.
 class_name Landfill
 extends Node2D
 
-const ICONS := "res://art/zetonai.png"
-const BASE_ART := "res://art/02b/7_savartynas.png"
+const BASE_ART := "res://art/02b/landfill_ground_v3.png"
 const BASE_W := 150.0
-const LIFT := -40.0   # pile sits on the island top, above the label
-const MAX_SHOWN := 70
+const LIFT := -40.0
+const MAX_SHOWN := 240
 
 var count: int = 0
-var _items: Array = []   # [Vector2 offset, form, rotation]
-var _icons: Texture2D
+var _items: Array = [] # One individual prop per counter unit, never grouped bales.
 var _base: Texture2D
-var _t: float = 0.0
-var _bump: float = 0.0
+var _loader: Texture2D
+var _bump := 0.0
+var _time := 0.0
 
 func _ready() -> void:
 	z_index = 0
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	if ResourceLoader.exists(ICONS):
-		_icons = load(ICONS)
-	if ResourceLoader.exists(BASE_ART):
-		_base = load(BASE_ART)
+	_base = load(BASE_ART)
+	_loader = load("res://art/02b/landfill_loader_v3.png")
 
 func add(form: int) -> void:
 	count += 1
 	_bump = 1.0
-	if _items.size() >= MAX_SHOWN:
-		return
-	# Fill the mound row by row from the bottom: wider rows at the bottom.
+	if _items.size() >= MAX_SHOWN:return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = count * 7919
 	var n := _items.size()
-	var row := 0
-	var start := 0
-	var width := 9
-	while n >= start + width:
-		start += width
-		row += 1
-		width = maxi(2, 9 - row * 2 + (row % 2))
-	var col := n - start
-	var x := (float(col) - float(width - 1) * 0.5) * 12.0 + randf_range(-3.0, 3.0)
-	var y := -float(row) * 9.0 + randf_range(-2.0, 2.0)
-	_items.append([Vector2(x, y), form, randf_range(-0.6, 0.6)])
+	# Eighteen separate positions fill the dirt before the next layer grows.
+	# A permuted grid avoids covering the previous item on every arrival.
+	var slot := (n * 7) % 18
+	var row := slot / 6
+	var col := slot % 6
+	var layer := n / 18
+	var pos := Vector2(-46.0 + col * 8.0 + row * 2.5, -7.0 + row * 8.0 - col * 3.0)
+	pos += Vector2(rng.randf_range(-1.5,1.5),rng.randf_range(-1.0,1.0)-layer*5.5)
+	# All of these sprites show exactly one discarded object.
+	var single: int = posmod(form+rng.randi_range(0,5),6)
+	_items.append({"pos":pos,"single":single,"rot":rng.randf_range(-0.55,0.55),"size":rng.randf_range(16.0,19.0),"age":0.0})
+	_items.sort_custom(func(a: Dictionary,b: Dictionary):return a.pos.y<b.pos.y)
 
 func reset() -> void:
 	count = 0
 	_items.clear()
 
 func _process(delta: float) -> void:
-	_t += delta
-	_bump = maxf(0.0, _bump - delta * 3.0)
+	_time += delta
+	_bump = maxf(0.0,_bump-delta*3.0)
+	for item in _items:item.age=minf(1.0,float(item.age)+delta*2.5)
 	queue_redraw()
 
 func _draw() -> void:
@@ -62,31 +61,26 @@ func _draw() -> void:
 	else:
 		draw_colored_polygon(PackedVector2Array([
 			Vector2(-70, 6), Vector2(-60, -2), Vector2(60, -2), Vector2(70, 6)]), Color(0.2, 0.17, 0.14, 0.9))
-	draw_set_transform(Vector2(0, LIFT + 20.0), 0.0, Vector2(0.72, 0.72))
-	if count > 0:
-		var h := 10.0 + minf(float(count), float(MAX_SHOWN)) * 0.9
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(-62, 2), Vector2(-20, -h * 0.85), Vector2(0, -h), Vector2(20, -h * 0.85), Vector2(62, 2)]),
-			Color(0.36, 0.3, 0.24, 1.0))
-	if _icons != null:
-		var fw := float(_icons.get_width()) / 6.0
-		for it in _items:
-			var off: Vector2 = it[0]
-			var form: int = it[1]
-			var rot: float = it[2]
-			draw_set_transform(Vector2(0, LIFT + 20.0) + (off + Vector2(0, -4)) * 0.72, rot, Vector2(0.72, 0.72))
-			draw_texture_rect_region(_icons, Rect2(-8, -8, 16, 16),
-				Rect2(fw * form, 0, fw, float(_icons.get_height())), Color(0.62, 0.58, 0.55, 1.0))
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	# Flies when the pile is big
-	if count >= 8:
-		var flies := mini(8, count / 6)
-		var top := LIFT + 18.0 - minf(float(count), float(MAX_SHOWN)) * 0.8 - 14.0
-		for k in flies:
-			var a := _t * (3.0 + k * 0.4) + float(k) * 1.3
-			var p := Vector2(cos(a) * (14.0 + k * 3.0), top + sin(a * 1.7) * 8.0)
-			draw_circle(p, 1.6, Color(0.05, 0.05, 0.05, 0.9))
+	# The loader travels along the right-hand dirt lane. The island never moves.
+	var travel := 0.5-0.5*cos(_time*TAU/7.0)
+	var vehicle_offset := Vector2(-5.0*travel,2.5*travel)
+	if _loader != null:
+		draw_texture_rect(_loader,Rect2(Vector2(0,-82)+vehicle_offset,Vector2.ONE*66),false)
+	for j in 4:
+		var phase := fmod(_time*0.36+j*0.25,1.0)
+		var smoke := Vector2(52,-65)+vehicle_offset+Vector2(phase*6,-phase*15)
+		draw_circle(smoke,1.2+phase*2,Color(0.60,0.65,0.69,0.20*(1-phase)))
+	for item in _items:
+		var off: Vector2 = item.pos
+		var age: float = item.age
+		var size: float = item.size
+		var fall := pow(1.0-age,2.0)*24.0
+		var p := Vector2(0,LIFT+8)+off
+		draw_set_transform(p,0,Vector2(1,0.38))
+		draw_circle(Vector2.ZERO,size*0.24,Color(0.21,0.15,0.08,0.20*age))
+		draw_set_transform(p-Vector2(0,fall),float(item.rot))
+		draw_texture_rect(GameArt.frame("landfill_litter_v3",int(item.single)),Rect2(-size*0.5,-size*0.8,size,size),false,Color(0.96,0.94,0.89))
+	draw_set_transform(Vector2.ZERO,0.0,Vector2.ONE)
 	var txt := Loc.t("Sąvartynas: %d") % count
 	var w := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13).x
 	var k2 := 1.0 + 0.15 * _bump
