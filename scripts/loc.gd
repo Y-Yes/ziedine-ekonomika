@@ -21,6 +21,8 @@ static func t(s: String) -> String:
 	return str(EN.get(s, s))
 
 const EN := {
+	"Rodyti QR kodą": "Show QR code",
+	"Uždaryti": "Close",
 	# --- HUD / menus
 	"Žiedinė ekonomika": "Circular Economy",
 	"Muzika": "Music",

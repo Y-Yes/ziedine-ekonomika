@@ -11,7 +11,7 @@ const HEAD_H := 26.0
 const PAD := 10.0
 const ICON := 24.0
 const NAME_X := 42.0
-const COL_X := [122.0, 186.0, 250.0]
+const COL_X := [122.0, 180.0, 238.0]
 const COL_W := 50.0
 const KINDS := ["speed", "cap", "value"]
 const HEADS := ["Greitis", "Sandėlis", "Vertė"]
@@ -27,9 +27,10 @@ func setup(g: Node, f: Font, fb: Font) -> void:
 	game = g
 	font = f
 	bold = fb
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	for p in Station.ART:
 		_sheets.append(load(p) if ResourceLoader.exists(p) else null)
-	size = Vector2(PAD * 2.0 + 316.0, PAD * 2.0 + HEAD_H + ROW_H * 6.0)
+	size = Vector2(PAD * 2.0 + 300.0, PAD * 2.0 + HEAD_H + ROW_H * 6.0)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 func _process(delta: float) -> void:
@@ -80,8 +81,8 @@ func _draw() -> void:
 	var fb := bold if bold != null else f
 	# Panel – same glass style as the other panels
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.09, 0.13, 0.8)
-	sb.border_color = Color(0.4, 0.5, 0.62, 0.6)
+	sb.bg_color = Color(0.045, 0.065, 0.105, 0.86)
+	sb.border_color = Color(0.55, 0.7, 0.9, 0.34)
 	sb.set_border_width_all(1)
 	sb.set_corner_radius_all(10)
 	sb.shadow_color = Color(0, 0, 0, 0.4)
@@ -120,8 +121,7 @@ func _draw() -> void:
 		var sh := _sheets[i]
 		var ir := Rect2(PAD + 1.0, cy - ICON * 0.5 - 1.0, ICON + 4.0, ICON + 4.0)
 		if sh != null:
-			var fw := float(sh.get_width()) / float(Station.ANIM_FRAMES)
-			draw_texture_rect_region(sh, ir, Rect2(0, 0, fw, float(sh.get_height())))
+			draw_texture_rect(sh, ir, false)
 		if st.fire > 0.0:
 			draw_circle(ir.get_center(), ICON * 0.45, Color(1.0, 0.4, 0.1, 0.45 + 0.3 * sin(_t * 12.0)))
 

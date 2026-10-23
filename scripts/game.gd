@@ -1347,6 +1347,6 @@ func _work(idx: int) -> void:
 
 func _station_at(pos: Vector2) -> int:
 	for i in stations.size():
-		if pos.distance_to(stations[i].position) <= stations[i].base_radius + 10.0:
+		if stations[i].contains_point(pos - stations[i].position):
 			return i
 	return -1

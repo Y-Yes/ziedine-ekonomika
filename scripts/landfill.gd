@@ -6,7 +6,7 @@ class_name Landfill
 extends Node2D
 
 const ICONS := "res://art/zetonai.png"
-const BASE_ART := "res://art/savartynas.png"
+const BASE_ART := "res://art/02b/7_savartynas.png"
 const BASE_W := 150.0
 const LIFT := -40.0   # pile sits on the island top, above the label
 const MAX_SHOWN := 70
@@ -20,6 +20,7 @@ var _bump: float = 0.0
 
 func _ready() -> void:
 	z_index = 0
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	if ResourceLoader.exists(ICONS):
 		_icons = load(ICONS)
 	if ResourceLoader.exists(BASE_ART):

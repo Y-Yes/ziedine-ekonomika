@@ -40,6 +40,7 @@ var fs_btn: Button
 var pause_layer: ColorRect
 var pause_main: VBoxContainer
 var pause_gloss: VBoxContainer
+var qr_layer: ColorRect
 var gloss_popup: PanelContainer
 var gloss_title: Label
 var gloss_text: Label
@@ -230,13 +231,64 @@ func _build() -> void:
 	_build_overlay()
 	_build_pause_menu()
 	_build_lessons()
+	_build_qr()
+
+## Menu-only QR entry points. Preserve the original image's white quiet zone
+## against a translucent scrim and keep the underlying menu intact.
+func _build_qr() -> void:
+	for menu in [overlay, pause_layer]:
+		var entry := Button.new()
+		entry.text = "QR"
+		entry.tooltip_text = Loc.t("Rodyti QR kodą")
+		menu.add_child(entry)
+		entry.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		entry.offset_left = -100
+		entry.offset_top = -60
+		entry.offset_right = -20
+		entry.offset_bottom = -20
+		entry.add_theme_font_size_override("font_size", 18)
+		_button_styles(entry)
+		entry.pressed.connect(func():
+			Sfx.play("click")
+			qr_layer.show()
+		)
+	qr_layer = ColorRect.new()
+	qr_layer.color = Color(0.02, 0.03, 0.05, 0.65)
+	qr_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	qr_layer.z_index = 100
+	_root.add_child(qr_layer)
+	qr_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	qr_layer.hide()
+	var code := TextureRect.new()
+	code.texture = load("res://art/qr_kodas.png")
+	code.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	code.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	code.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	code.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	qr_layer.add_child(code)
+	code.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	code.offset_left = 16
+	code.offset_right = -16
+	code.offset_top = 68
+	code.offset_bottom = -16
+	var close := Button.new()
+	close.text = Loc.t("Uždaryti") + " (Esc)"
+	qr_layer.add_child(close)
+	close.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	close.offset_left = -200
+	close.offset_top = 12
+	close.offset_right = -16
+	close.offset_bottom = 56
+	close.add_theme_font_size_override("font_size", 16)
+	_button_styles(close)
+	close.pressed.connect(func(): Sfx.play("click"); qr_layer.hide())
 
 # --- Theme -----------------------------------------------------------------
 # One look for every window: dark glass surfaces, thin light borders, one blue
 # accent for actions and highlights, green / red / gold only for meaning.
-const T_SURF := Color(0.075, 0.095, 0.135)
-const T_RAISED := Color(0.12, 0.15, 0.2)
-const T_LINE := Color(0.7, 0.8, 0.95, 0.16)
+const T_SURF := Color(0.045, 0.065, 0.105)
+const T_RAISED := Color(0.09, 0.13, 0.19)
+const T_LINE := Color(0.55, 0.7, 0.9, 0.34)
 const T_TEXT := Color(0.93, 0.95, 0.98)
 const T_MUTED := Color(0.64, 0.7, 0.79)
 const T_ACC := Color(0.45, 0.74, 1.0)
@@ -256,9 +308,9 @@ func _style(bg: Color, border: Color, radius: int = 10, bw: int = 2) -> StyleBox
 	else:
 		sb.border_color = T_LINE
 		sb.set_border_width_all(1)
-	sb.set_corner_radius_all(clampi(radius, 8, 12))
+	sb.set_corner_radius_all(clampi(radius, 10, 16))
 	sb.shadow_color = Color(0.0, 0.0, 0.0, 0.4)
-	sb.shadow_size = 8
+	sb.shadow_size = 10
 	sb.shadow_offset = Vector2(0, 3)
 	sb.anti_aliasing = true
 	sb.content_margin_left = 12
@@ -418,7 +470,7 @@ func _menu_button(parent: Control, text: String, accent: Color, cb: Callable) ->
 
 func _build_pause_menu() -> void:
 	pause_layer = ColorRect.new()
-	pause_layer.color = Color(0.02, 0.03, 0.06, 0.78)
+	pause_layer.color = Color(0.02, 0.03, 0.06, 0.72)
 	pause_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	pause_layer.mouse_filter = Control.MOUSE_FILTER_STOP
 	pause_layer.visible = false
@@ -801,7 +853,7 @@ func _build_panel() -> void:
 		d.custom_minimum_size = Vector2(196, 0)
 		texts.add_child(d)
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(78, 40)
+		b.custom_minimum_size = Vector2(78, 60)
 		b.add_theme_font_size_override("font_size", 16)
 		b.add_theme_font_override("font", bold)
 		var kind: String = KINDS[i]
@@ -1041,7 +1093,7 @@ func _build_report() -> void:
 
 func _build_overlay() -> void:
 	overlay = ColorRect.new()
-	overlay.color = Color(0.02, 0.03, 0.05, 0.86)
+	overlay.color = Color(0.02, 0.03, 0.05, 0.72)
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	_root.add_child(overlay)
@@ -1890,7 +1942,7 @@ func _process(delta: float) -> void:
 		secret_btn.queue_redraw()
 	_try_coach()
 	_blink_t += delta
-	if panel != null and panel.visible:
+	if panel != null and panel.visible and not pause_layer.visible and not overlay.visible and not qr_layer.visible and not report.visible:
 		var any := false
 		for i in KINDS.size():
 			var on: bool = KINDS[i] == _recommended and not row_btn[i].disabled
@@ -1927,6 +1979,12 @@ func _process(delta: float) -> void:
 		money_label.scale = Vector2(k, k)
 
 func _input(ev: InputEvent) -> void:
+	if is_instance_valid(qr_layer) and qr_layer.visible:
+		if ev is InputEventKey:
+			if ev.pressed and ev.keycode == KEY_ESCAPE:
+				qr_layer.hide()
+			get_viewport().set_input_as_handled()
+		return
 	if ev is InputEventKey and ev.pressed and not ev.echo:
 		if ev.keycode == KEY_M:
 			_toggle_mute()
