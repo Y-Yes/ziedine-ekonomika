@@ -107,6 +107,18 @@ var diff_btns: Array[Button] = []
 var tut_check: CheckBox
 var best_label: Label
 var selected_diff: int = 1
+
+# Online leaderboard (see Leaderboard / NetConfig). The nickname is only ever
+# validated by the database, never here.
+var name_edit: LineEdit
+var lb_box: VBoxContainer
+var lb_status: Label
+var lb_rows: VBoxContainer
+var final_send_row: HBoxContainer
+var final_name_edit: LineEdit
+var final_send_btn: Button
+var final_lb_status: Label
+var _score_sent: bool = false
 const SECRET_DIFF := 3
 # Learning mode UI
 var learn_check: CheckBox
@@ -623,8 +635,15 @@ func refresh_fullscreen() -> void:
 # --- Language ----------------------------------------------------------------------
 
 func _switch_language() -> void:
+	# rebuild() throws the whole interface away, so keep what the player typed.
+	var typed := ""
+	if name_edit != null:
+		typed = name_edit.text
 	Loc.set_lang("en" if Loc.lang == "lt" else "lt")
 	rebuild()
+	# The rebuilt field is empty again – put the player's own text back.
+	if name_edit != null:
+		name_edit.text = typed
 
 ## Rebuild the whole interface (used after switching the language).
 func rebuild() -> void:
@@ -1142,6 +1161,26 @@ func _build_overlay() -> void:
 	secret_label = _center_label(start_box, 15, Color(1.0, 0.35, 0.3))
 	secret_label.add_theme_font_override("font", bold)
 	secret_label.visible = false
+	# Nickname for the online board, asked before the player starts. The rules
+	# for what a nickname may contain live in the database, not in this code.
+	var ccname := CenterContainer.new()
+	start_box.add_child(ccname)
+	var nrow := HBoxContainer.new()
+	nrow.add_theme_constant_override("separation", 8)
+	ccname.add_child(nrow)
+	var nlbl := Label.new()
+	nlbl.text = Loc.t("Vardas lentelėje:")
+	nlbl.add_theme_font_size_override("font_size", 13)
+	nlbl.add_theme_color_override("font_color", T_MUTED)
+	nlbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	nrow.add_child(nlbl)
+	name_edit = LineEdit.new()
+	# Starts empty on purpose: the player sees only the hint, never an old name.
+	name_edit.placeholder_text = Loc.t("tavo vardas")
+	name_edit.max_length = 16
+	name_edit.custom_minimum_size = Vector2(190, 30)
+	name_edit.add_theme_font_size_override("font_size", 14)
+	nrow.add_child(name_edit)
 	var cc2 := CenterContainer.new()
 	start_box.add_child(cc2)
 	tut_check = CheckBox.new()
@@ -1205,6 +1244,13 @@ func _build_overlay() -> void:
 	fs_start.pressed.connect(func(): game.toggle_fullscreen())
 	row5.add_child(fs_start)
 	row5.add_child(lang_btn)
+	var lb_start := Button.new()
+	lb_start.text = Loc.t("Geriausiųjų lentelė")
+	lb_start.custom_minimum_size = Vector2(150, 32)
+	lb_start.add_theme_font_size_override("font_size", 13)
+	_button_styles(lb_start)
+	lb_start.pressed.connect(func(): Sfx.play("click"); show_leaderboard())
+	row5.add_child(lb_start)
 	_build_secret_button()
 	# The secret level is never pre-selected on launch – it stays a secret;
 	# if it was played last time, "Sunkus" is offered instead.
@@ -1243,16 +1289,230 @@ func _build_overlay() -> void:
 	final_text = _center_label(final_box, 14, Color(0.75, 0.82, 0.92))
 	final_text.custom_minimum_size = Vector2(760, 0)
 	final_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Send-to-board row. Whether a nickname is acceptable is decided by
+	# Postgres, so a refusal simply comes back as a message.
+	final_send_row = HBoxContainer.new()
+	final_send_row.add_theme_constant_override("separation", 10)
+	final_send_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	final_box.add_child(final_send_row)
+	final_name_edit = LineEdit.new()
+	final_name_edit.placeholder_text = Loc.t("tavo vardas")
+	final_name_edit.max_length = 16
+	final_name_edit.custom_minimum_size = Vector2(190, 34)
+	final_name_edit.add_theme_font_size_override("font_size", 15)
+	final_name_edit.text_submitted.connect(func(_t: String): _submit_score())
+	final_send_row.add_child(final_name_edit)
+	final_send_btn = Button.new()
+	final_send_btn.text = Loc.t("Siųsti rezultatą")
+	final_send_btn.custom_minimum_size = Vector2(190, 34)
+	final_send_btn.add_theme_font_size_override("font_size", 15)
+	_button_styles(final_send_btn)
+	final_send_btn.pressed.connect(func(): Sfx.play("click"); _submit_score())
+	final_send_row.add_child(final_send_btn)
+	final_lb_status = _center_label(final_box, 13, T_MUTED)
+	final_lb_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	final_lb_status.custom_minimum_size = Vector2(760, 0)
 	var cc4 := CenterContainer.new()
 	final_box.add_child(cc4)
+	var row4 := HBoxContainer.new()
+	row4.add_theme_constant_override("separation", 12)
+	cc4.add_child(row4)
 	var again := Button.new()
-	again.custom_minimum_size = Vector2(260, 52)
+	again.custom_minimum_size = Vector2(240, 52)
 	again.add_theme_font_size_override("font_size", 20)
 	again.add_theme_font_override("font", bold)
 	again.text = Loc.t("Žaisti dar kartą")
 	_primary_styles(again)
 	again.pressed.connect(func(): show_start_overlay())
-	cc4.add_child(again)
+	row4.add_child(again)
+	var lb_open := Button.new()
+	lb_open.custom_minimum_size = Vector2(230, 52)
+	lb_open.add_theme_font_size_override("font_size", 18)
+	lb_open.text = Loc.t("Geriausiųjų lentelė")
+	_button_styles(lb_open)
+	lb_open.pressed.connect(func(): Sfx.play("click"); show_leaderboard())
+	row4.add_child(lb_open)
+
+	_build_leaderboard(holder)
+
+## The best-scores screen. It is a separate box rather than extra rows on the
+## final screen, so ten results cannot push the buttons off the screen.
+func _build_leaderboard(holder: Control) -> void:
+	lb_box = VBoxContainer.new()
+	lb_box.add_theme_constant_override("separation", 12)
+	lb_box.visible = false
+	holder.add_child(lb_box)
+	var head := _center_label(lb_box, 34, T_TEXT)
+	head.add_theme_font_override("font", bold)
+	head.text = Loc.t("Geriausiųjų lentelė")
+	var sub := _center_label(lb_box, 14, T_MUTED)
+	sub.text = Loc.t("Dešimt geriausių rezultatų. Mokomieji žaidimai į lentelę nepatenka.")
+	lb_status = _center_label(lb_box, 15, T_MUTED)
+	lb_status.text = Loc.t("Kraunama…")
+	var wrap := CenterContainer.new()
+	lb_box.add_child(wrap)
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", _style(Color(0.12, 0.14, 0.2), Color(T_ACC, 0.35), 12, 1))
+	card.custom_minimum_size = Vector2(660, 0)
+	wrap.add_child(card)
+	lb_rows = VBoxContainer.new()
+	lb_rows.add_theme_constant_override("separation", 7)
+	card.add_child(lb_rows)
+	var cc := CenterContainer.new()
+	lb_box.add_child(cc)
+	var back := Button.new()
+	back.text = Loc.t("Atgal")
+	back.custom_minimum_size = Vector2(220, 46)
+	back.add_theme_font_size_override("font_size", 18)
+	_button_styles(back)
+	back.pressed.connect(func(): Sfx.play("click"); hide_leaderboard())
+	cc.add_child(back)
+
+func show_leaderboard() -> void:
+	overlay.visible = true
+	intro_box.visible = false
+	start_box.visible = false
+	final_box.visible = false
+	lb_box.visible = true
+	_clear_lb_rows()
+	lb_status.text = Loc.t("Kraunama…")
+	lb_status.add_theme_color_override("font_color", T_MUTED)
+	var res: Dictionary = await Leaderboard.top(Leaderboard.MAX_ROWS)
+	if lb_box == null or not lb_box.visible:
+		return            # the player left the screen while it was loading
+	if not bool(res["ok"]):
+		lb_status.text = str(res["msg"])
+		return
+	var rows: Array = res["rows"]
+	if rows.is_empty():
+		lb_status.text = Loc.t("Lentelė dar tuščia – būk pirmas!")
+		return
+	lb_status.text = ""
+	for i in rows.size():
+		lb_rows.add_child(_lb_row(i + 1, rows[i]))
+
+func hide_leaderboard() -> void:
+	if lb_box != null:
+		lb_box.visible = false
+	show_start_overlay()
+
+func _clear_lb_rows() -> void:
+	for c in lb_rows.get_children():
+		lb_rows.remove_child(c)
+		c.queue_free()
+
+## One row of the board: place, nickname, difficulty, circularity, pollution, score.
+func _lb_row(place: int, row: Dictionary) -> Control:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	var num := Label.new()
+	num.text = "%d." % place
+	num.custom_minimum_size = Vector2(34, 0)
+	num.add_theme_font_size_override("font_size", 16)
+	num.add_theme_color_override("font_color", T_GOLD if place <= 3 else T_MUTED)
+	h.add_child(num)
+	var nm := Label.new()
+	nm.text = str(row.get("name", "?"))
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.add_theme_font_size_override("font_size", 16)
+	nm.add_theme_color_override("font_color", T_TEXT)
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	h.add_child(nm)
+	var dif := Label.new()
+	dif.text = _diff_title(int(row.get("difficulty", 1)))
+	dif.custom_minimum_size = Vector2(108, 0)
+	dif.add_theme_font_size_override("font_size", 12)
+	dif.add_theme_color_override("font_color", T_MUTED)
+	h.add_child(dif)
+	var stats := Label.new()
+	stats.text = (Loc.t("žied. %d %%") % int(row.get("circularity", 0))) \
+		+ " · " + (Loc.t("tarša %d %%") % int(row.get("pollution", 0)))
+	stats.custom_minimum_size = Vector2(168, 0)
+	stats.add_theme_font_size_override("font_size", 12)
+	stats.add_theme_color_override("font_color", T_MUTED)
+	h.add_child(stats)
+	var sc := Label.new()
+	sc.text = str(int(row.get("score", 0)))
+	sc.custom_minimum_size = Vector2(72, 0)
+	sc.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	sc.add_theme_font_size_override("font_size", 17)
+	sc.add_theme_font_override("font", bold)
+	sc.add_theme_color_override("font_color", T_GOLD)
+	h.add_child(sc)
+	return h
+
+func _diff_title(i: int) -> String:
+	var diffs: Array = game.DIFFICULTIES
+	if i < 0 or i >= diffs.size():
+		return ""
+	return Loc.t(str(diffs[i]["title"]))
+
+## The row that is sent to the board.
+func _score_row(nm: String) -> Dictionary:
+	return {
+		"name": nm,
+		"score": game.final_score(),
+		"earned": int(game.total_earned),
+		"loops": game.loops,
+		"circularity": int(game.circularity()),
+		"pollution": int(game.pollution),
+		"landfilled": game.landfilled,
+		"difficulty": game.difficulty,
+		"years": game.year,
+		"learning": false,
+	}
+
+## Fills in the send row of the final screen and submits straight away when the
+## player already typed a nickname on the start screen. Teaching-mode games are
+## never submitted.
+func _prepare_score_send() -> void:
+	_score_sent = false
+	final_lb_status.text = ""
+	# Only the name typed in this session counts – nothing is carried over from
+	# a previous run, so a game is never submitted under someone else's name.
+	final_name_edit.text = ""
+	if name_edit != null:
+		final_name_edit.text = name_edit.text.strip_edges()
+	final_send_row.visible = not game.learning
+	final_send_btn.disabled = false
+	if game.learning:
+		return
+	if final_name_edit.text.strip_edges().length() >= 2:
+		_submit_score()
+	else:
+		final_lb_status.text = Loc.t("Įrašyk vardą, kad patektum į geriausiųjų lentelę.")
+
+func _submit_score() -> void:
+	if _score_sent or not NetConfig.ENABLED or game.learning:
+		return
+	var nm := final_name_edit.text.strip_edges()
+	if nm.length() < 2:
+		final_lb_status.text = Loc.t("Įrašyk vardą (2–16 simbolių).")
+		final_lb_status.add_theme_color_override("font_color", T_MUTED)
+		return
+	final_send_btn.disabled = true
+	final_lb_status.text = Loc.t("Siunčiama…")
+	final_lb_status.add_theme_color_override("font_color", T_MUTED)
+	var res: Dictionary = await Leaderboard.submit(_score_row(nm))
+	final_send_btn.disabled = false
+	if not bool(res["ok"]):
+		final_lb_status.text = str(res["msg"])
+		var refuses_name := str(res["kind"]) == "name"
+		final_lb_status.add_theme_color_override("font_color", T_BAD if refuses_name else T_MUTED)
+		return
+	_score_sent = true
+	final_send_row.visible = false
+	final_lb_status.text = Loc.t("Rezultatas įrašytas į geriausiųjų lentelę.")
+	final_lb_status.add_theme_color_override("font_color", T_GOOD)
+	var top_res: Dictionary = await Leaderboard.top(Leaderboard.MAX_ROWS)
+	if not bool(top_res["ok"]):
+		return
+	var rows: Array = top_res["rows"]
+	for i in rows.size():
+		if str(rows[i].get("name", "")).nocasecmp_to(nm) == 0:
+			final_lb_status.text = Loc.t("Tavo vieta lentelėje: #%d") % (i + 1)
+			final_lb_status.add_theme_color_override("font_color", T_GOLD)
+			return
 
 func _build_intro(holder: Control) -> void:
 	intro_box = VBoxContainer.new()
@@ -1575,6 +1835,8 @@ func show_intro() -> void:
 	intro_box.visible = true
 	start_box.visible = false
 	final_box.visible = false
+	if lb_box != null:
+		lb_box.visible = false
 
 ## Invisible button in the bottom-left corner of the start screen that
 ## unlocks the secret "Ekstremalus" difficulty.
@@ -1652,6 +1914,11 @@ func _on_start_pressed() -> void:
 
 func show_start_overlay() -> void:
 	overlay.visible = true
+	# Open the TLS connection now, while nobody is waiting for it. Deferred: this
+	# may run from Game._ready(), where the tree is still being set up. Has to
+	# happen before the intro early-return, otherwise first-time players never
+	# warm the connection up.
+	Leaderboard.warm_up.call_deferred()
 	# A brand-new player first sees the "how to play" page.
 	if not bool(Settings.get_value("intro_seen", false)):
 		show_intro()
@@ -1659,6 +1926,8 @@ func show_start_overlay() -> void:
 	intro_box.visible = false
 	start_box.visible = true
 	final_box.visible = false
+	if lb_box != null:
+		lb_box.visible = false
 	tut_check.button_pressed = not bool(Settings.get_value("tutorial_done", false)) or learn_check.button_pressed
 	var best := int(Settings.get_value("best_score", 0))
 	best_label.text = Loc.t("Tavo rekordas: %d") % best if best > 0 else ""
@@ -1720,6 +1989,8 @@ func show_final(s: Dictionary) -> void:
 	overlay.visible = true
 	start_box.visible = false
 	final_box.visible = true
+	if lb_box != null:
+		lb_box.visible = false
 	final_title.text = game.final_title()
 	final_sub.text = Loc.t("ŽAIDIMAS BAIGTAS") if bool(s.get("lost", false)) else Loc.t("10 metų baigėsi! Tavo įmonės titulas:")
 	if game.learning:
@@ -1740,6 +2011,7 @@ func show_final(s: Dictionary) -> void:
 	else:
 		final_score_label.text = Loc.t("Rezultatas: %d   (rekordas: %d)") % [score, best]
 		final_score_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	_prepare_score_send()
 	if bool(s.get("lost", false)):
 		final_title.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4))
 		var why := Loc.t("Tarša per ilgai laikėsi 100 % – ekosistema žlugo.") if game.lost_reason == "planet" \
