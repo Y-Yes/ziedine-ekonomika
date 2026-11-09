@@ -181,6 +181,7 @@ void fragment() {
 			var ground_y:=int(SIDE*0.80)
 			if frame==0:
 				registered_ground=image.duplicate()
+				image.save_png(OUT+NAMES[index]+"-base.png")
 			else:
 				image.blit_rect(registered_ground,Rect2i(0,ground_y,SIDE,SIDE-ground_y),Vector2i(0,ground_y))
 			atlas.blit_rect(image,Rect2i(0,0,SIDE,SIDE),Vector2i((frame%COLS)*SIDE,(frame/COLS)*SIDE))

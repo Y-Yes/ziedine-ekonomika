@@ -45,13 +45,15 @@ var _earth_tex := {}
 
 func _ready() -> void:
 	z_index = -1
+	_setup_earth()
+	if _pview != null:
+		return
 	if ResourceLoader.exists(PLANET_OK):
 		_planet_ok = load(PLANET_OK)
 	if ResourceLoader.exists(PLANET_BAD):
 		_planet_bad = load(PLANET_BAD)
 	if ResourceLoader.exists(PLANET_FIRE):
 		_planet_fire = load(PLANET_FIRE)
-	_setup_earth()
 
 func _setup_earth() -> void:
 	if not ResourceLoader.exists(EARTH_DIR + "planeta.gdshader"):

@@ -191,6 +191,9 @@ var exploding: bool = false
 const EXPLOSION_TIME := 3.0
 var heat_left: float = 0.0
 var lost_reason: String = ""
+var _restoring := false
+var _autosave_elapsed := 0.0
+var _report_summary: Dictionary = {}
 
 func _ready() -> void:
 	randomize()
@@ -260,6 +263,7 @@ func toggle_pause() -> void:
 
 ## Leave the current game and go back to the start screen.
 func quit_to_menu() -> void:
+	save_progress()
 	hud.coach_disable()
 	coach_freeze = false
 	running = false
@@ -327,6 +331,9 @@ func _add_background() -> void:
 # --- Game flow -------------------------------------------------------------
 
 func start_game(diff_index: int = -1, with_tutorial: bool = false, learn: bool = false) -> void:
+	if not _restoring:RunSave.clear()
+	_report_summary.clear()
+	_autosave_elapsed=0.0
 	learning = learn
 	lesson_open = false
 	lesson_timer = 0.0
@@ -411,6 +418,7 @@ func start_game(diff_index: int = -1, with_tutorial: bool = false, learn: bool =
 	hud.start_learning(learning)
 	coach_freeze = false
 	hud.start_coach(with_tutorial)
+	if not _restoring:save_progress()
 
 func _reset_year_stats() -> void:
 	year_time = 0.0
@@ -450,7 +458,9 @@ func _end_year() -> void:
 		_finish_game(summary)
 		return
 	report_cards = _draw_cards(3)
+	_report_summary=summary.duplicate(true)
 	hud.show_report(summary, report_cards)
+	save_progress()
 
 func choose_card(i: int) -> void:
 	if not in_report or i < 0 or i >= report_cards.size():
@@ -470,6 +480,7 @@ func choose_card(i: int) -> void:
 	hud.refresh()
 	if learning and year == LESSON_YEARS + 1 and not hud.quiz_done:
 		hud.learning_mid_quiz()
+	save_progress()
 
 func _draw_cards(n: int) -> Array:
 	var pool := PERKS.duplicate()
@@ -511,6 +522,7 @@ func _apply_perk(p: Dictionary) -> void:
 		st.recompute()
 
 func _finish_game(summary: Dictionary) -> void:
+	RunSave.clear()
 	hud.coach_disable()
 	# Beating "Sunkus" (or harder) makes the secret corner start to glint.
 	if lost_reason == "" and difficulty >= 2:
@@ -720,7 +732,23 @@ static func _fmt(v: float) -> String:
 
 # --- Main loop -------------------------------------------------------------
 
+func save_progress() -> bool:
+	if _restoring:return false
+	return RunSave.write_save(self)
+
+func resume_saved_game() -> void:
+	var data:=RunSave.read_save()
+	if data.is_empty():return
+	RunSave.restore(self,data)
+
+func _notification(what: int) -> void:
+	if what==NOTIFICATION_WM_WINDOW_FOCUS_OUT and is_instance_valid(hud):save_progress()
+
 func _process(real_delta: float) -> void:
+	_autosave_elapsed+=real_delta
+	if _autosave_elapsed>=3.0:
+		_autosave_elapsed=0.0
+		save_progress()
 	# screen shake
 	if _shake > 0.0:
 		_shake = maxf(0.0, _shake - real_delta * 3.0)
@@ -959,6 +987,7 @@ func upgrade_selected(kind: String) -> void:
 		Pipeline.color_of(st.index).lightened(0.3), 16)
 	hud.refresh()
 	hud.tutorial_notify("upgrade")
+	save_progress()
 
 ## Which upgrade pays off most right now (affordable only), or "".
 ## Busy / overflowing stations need speed (or storage if it is much cheaper);
@@ -1205,6 +1234,7 @@ func _update_sorting(delta: float) -> void:
 		Sfx.play("event", 0.0)
 
 func _open_sorting() -> void:
+	save_progress()
 	stations[SORTER].sort_alert = 0.0
 	sorting_active = true
 	Station.sim_speed = SORT_SLOWMO
@@ -1221,6 +1251,8 @@ func _on_sorting_done(correct: int, total: int, reward: float) -> void:
 	add_pollution(-0.6 * float(correct))
 	if reward > 0.0:
 		earn(reward, stations[SORTER].position + Vector2(0, -60), Loc.t("rūšiavimas"))
+
+	save_progress()
 
 ## A sorting mistake (or an unsorted item): it goes to the landfill.
 func sorting_mistake(_item: int) -> void:

@@ -16,11 +16,14 @@ static func region(texture: Texture2D, frame: int) -> Rect2:
 static func base(_index: int, texture: Texture2D) -> Texture2D:
 	var key := texture.get_rid().get_id()
 	if not _first_frames.has(key):
-		var first := AtlasTexture.new()
-		first.atlas = texture
-		first.region = region(texture,0)
-		first.filter_clip = true
-		_first_frames[key] = first
+		# Avoid downloading the entire 96-frame GPU atlas just to read its mask.
+		var path:=texture.resource_path.get_basename()+"-base.png"
+		if ResourceLoader.exists(path):
+			_first_frames[key]=load(path)
+		else:
+			var first:=AtlasTexture.new();first.atlas=texture
+			first.region=region(texture,0);first.filter_clip=true
+			_first_frames[key]=first
 	return _first_frames[key]
 
 static func draw(owner: CanvasItem, _index: int, texture: Texture2D, rect: Rect2, time: float, _working: bool) -> void:

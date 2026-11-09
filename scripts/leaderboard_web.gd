@@ -29,7 +29,7 @@ static func request(method: int, query: String, body: String, prefer: String) ->
 	var slot := JS_PREFIX + str(_seq)
 	_eval(slot + " = '';")
 	_eval(_script(method, query, body, prefer, slot))
-	var deadline := Time.get_ticks_msec() + int(NetConfig.TIMEOUT * 1000.0)
+	var deadline := Time.get_ticks_msec() + int((NetConfig.TIMEOUT + 0.5) * 1000.0)
 	while Time.get_ticks_msec() < deadline:
 		await tree.process_frame
 		var raw := str(_eval(slot + " || ''"))
@@ -46,6 +46,7 @@ static func request(method: int, query: String, body: String, prefer: String) ->
 					"rows": [],
 				}
 			return _fail()
+	_eval("delete " + slot + ";")
 	return _fail()
 
 ## Looks the bridge up at run time on purpose: naming JavaScriptBridge directly
@@ -71,10 +72,11 @@ static func _script(method: int, query: String, body: String, prefer: String, sl
 	if prefer != "":
 		headers += ", \"Prefer\": %s" % JSON.stringify(prefer)
 	headers += "}"
-	var js := "(function(){var opt={method:%s,headers:%s};" % [JSON.stringify(verb), headers]
+	var key := JSON.stringify(slot.trim_prefix("window."))
+	var js := "(function(){var controller=new AbortController();var timer=setTimeout(function(){controller.abort();},%d);var opt={method:%s,headers:%s,signal:controller.signal};" % [int(NetConfig.TIMEOUT*1000),JSON.stringify(verb),headers]
+	js += "function finish(code,body){clearTimeout(timer);if(Object.prototype.hasOwnProperty.call(window,%s)){window[%s]=JSON.stringify({code:code,body:body});}}" % [key,key]
 	if body != "":
 		js += "opt.body=%s;" % JSON.stringify(body)
-	js += "fetch(%s,opt).then(function(r){return r.text().then(function(t){" % JSON.stringify(NetConfig.endpoint() + query)
-	js += slot + "=JSON.stringify({code:r.status,body:t});});})"
-	js += ".catch(function(e){" + slot + "=JSON.stringify({code:0,body:String(e)});});})();"
+	js += "fetch(%s,opt).then(function(r){return r.text().then(function(t){finish(r.status,t);});})" % JSON.stringify(NetConfig.endpoint()+query)
+	js += ".catch(function(e){finish(0,String(e));});})();"
 	return js

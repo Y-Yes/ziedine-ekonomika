@@ -33,8 +33,10 @@ static func submit(row: Dictionary) -> Dictionary:
 	# database refusing the nickname – tell the player to pick another one.
 	if int(res["code"]) == 400 and str(res["msg"]).contains("23514"):
 		return _fail("name", Loc.t("Toks vardas netinka – įrašyk kitą."), 400)
+	if int(res["code"]) == 409 and str(res["msg"]).contains("23505"):
+		return _fail("name", Loc.t("Šis vardas jau naudojamas – įrašyk kitą."), 409)
 	if str(res["kind"]) == "offline":
-		return _fail("offline", Loc.t("Nepavyko išsiųsti rezultato."))
+		return _fail("offline", Loc.t("Ryšys nutrūko. Rezultatas galėjo būti įrašytas – patikrink lentelę."))
 	return _fail("error", Loc.t("Nepavyko išsiųsti rezultato."), int(res["code"]))
 
 ## Best scores first. Teaching-mode games are filtered out by the query itself,
@@ -46,7 +48,16 @@ static func top(limit: int = MAX_ROWS) -> Dictionary:
 	var res: Dictionary = await _request(HTTPClient.METHOD_GET, query, "")
 	if not bool(res["ok"]):
 		return _fail("error", Loc.t("Lentelės įkelti nepavyko."))
-	res["rows"] = _parse_rows(str(res["msg"]))
+	var parser := JSON.new()
+	if parser.parse(str(res["msg"])) != OK:
+		return _fail("error", Loc.t("Lentelės įkelti nepavyko."))
+	var rows: Variant = parser.data
+	if not rows is Array:
+		return _fail("error", Loc.t("Lentelės įkelti nepavyko."))
+	for row in rows:
+		if not row is Dictionary:
+			return _fail("error", Loc.t("Lentelės įkelti nepavyko."))
+	res["rows"] = rows
 	res["msg"] = ""
 	return res
 
@@ -67,17 +78,13 @@ static func warm_up() -> void:
 	_warmed = true
 	await _request(HTTPClient.METHOD_GET, "?select=name&limit=1", "")
 
-static func _parse_rows(raw: String) -> Array:
-	var data: Variant = JSON.parse_string(raw)
-	return data if data is Array else []
-
-## One HTTP round trip, retried once when the connection itself failed. The
-## first request a browser makes to the server pays DNS + TCP + TLS + a CORS
-## preflight, and that is exactly the one that used to time out; by the time the
-## second attempt runs, all of it is cached, so the retry usually succeeds.
+## Read requests may retry a failed connection once; writes never retry
+## automatically because a lost response does not prove that nothing was saved.
 static func _request(method: int, query: String, body: String, prefer: String = "") -> Dictionary:
 	var res: Dictionary = await _request_once(method, query, body, prefer)
-	if str(res["kind"]) == "offline":
+	# A POST may already have reached the database when its response is lost.
+	# Retrying it automatically can insert the same finished game twice.
+	if method == HTTPClient.METHOD_GET and str(res["kind"]) == "offline":
 		res = await _request_once(method, query, body, prefer)
 	return res
 

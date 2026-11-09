@@ -119,6 +119,11 @@ var final_name_edit: LineEdit
 var final_send_btn: Button
 var final_lb_status: Label
 var _score_sent: bool = false
+var _score_sending := false
+var _score_generation := 0
+var _score_payload: Dictionary = {}
+var _lb_load_id := 0
+var _lb_return_to_final := false
 const SECRET_DIFF := 3
 # Learning mode UI
 var learn_check: CheckBox
@@ -145,6 +150,9 @@ var _learning_ending: bool = false
 var _mid_quiz: bool = false
 var quiz_done: bool = false
 var _pending_start: bool = false
+var _learning_session := 0
+var _resume_btn: Button
+var _new_game_btn: Button
 var _intro_shown_once: bool = false
 # Guide tips for first-time situations (fire, strike, sorting…)
 var coach_node: Coach
@@ -1216,7 +1224,15 @@ func _build_overlay() -> void:
 	go.text = Loc.t("PRADĖTI")
 	_primary_styles(go)
 	go.pressed.connect(_on_start_pressed)
-	cc3.add_child(go)
+	var play_row:=HBoxContainer.new();play_row.add_theme_constant_override("separation",12)
+	cc3.add_child(play_row)
+	_new_game_btn=go
+	play_row.add_child(go)
+	_resume_btn=Button.new();_resume_btn.text=Loc.t("Tęsti žaidimą")
+	_resume_btn.custom_minimum_size=Vector2(260,56);_resume_btn.add_theme_font_size_override("font_size",22)
+	_primary_styles(_resume_btn);_resume_btn.pressed.connect(func():game.resume_saved_game())
+	play_row.add_child(_resume_btn)
+	_resume_btn.visible=RunSave.available()
 	best_label = _center_label(start_box, 13, Color(0.6, 0.68, 0.8))
 	var cc5 := CenterContainer.new()
 	start_box.add_child(cc5)
@@ -1369,6 +1385,10 @@ func _build_leaderboard(holder: Control) -> void:
 	cc.add_child(back)
 
 func show_leaderboard() -> void:
+	if not lb_box.visible:
+		_lb_return_to_final = final_box.visible
+	_lb_load_id += 1
+	var load_id := _lb_load_id
 	overlay.visible = true
 	intro_box.visible = false
 	start_box.visible = false
@@ -1378,7 +1398,7 @@ func show_leaderboard() -> void:
 	lb_status.text = Loc.t("Kraunama…")
 	lb_status.add_theme_color_override("font_color", T_MUTED)
 	var res: Dictionary = await Leaderboard.top(Leaderboard.MAX_ROWS)
-	if lb_box == null or not lb_box.visible:
+	if load_id != _lb_load_id or lb_box == null or not lb_box.visible:
 		return            # the player left the screen while it was loading
 	if not bool(res["ok"]):
 		lb_status.text = str(res["msg"])
@@ -1392,9 +1412,14 @@ func show_leaderboard() -> void:
 		lb_rows.add_child(_lb_row(i + 1, rows[i]))
 
 func hide_leaderboard() -> void:
+	_lb_load_id += 1
 	if lb_box != null:
 		lb_box.visible = false
-	show_start_overlay()
+	if _lb_return_to_final:
+		overlay.visible = true
+		final_box.visible = true
+	else:
+		show_start_overlay()
 
 func _clear_lb_rows() -> void:
 	for c in lb_rows.get_children():
@@ -1466,7 +1491,11 @@ func _score_row(nm: String) -> Dictionary:
 ## player already typed a nickname on the start screen. Teaching-mode games are
 ## never submitted.
 func _prepare_score_send() -> void:
+	_score_generation += 1
+	_score_sending = false
 	_score_sent = false
+	_score_payload = _score_row("")
+	final_name_edit.editable = true
 	final_lb_status.text = ""
 	# Only the name typed in this session counts – nothing is carried over from
 	# a previous run, so a game is never submitted under someone else's name.
@@ -1483,17 +1512,26 @@ func _prepare_score_send() -> void:
 		final_lb_status.text = Loc.t("Įrašyk vardą, kad patektum į geriausiųjų lentelę.")
 
 func _submit_score() -> void:
-	if _score_sent or not NetConfig.ENABLED or game.learning:
+	if _score_sent or _score_sending or not NetConfig.ENABLED or game.learning:
 		return
 	var nm := final_name_edit.text.strip_edges()
 	if nm.length() < 2:
 		final_lb_status.text = Loc.t("Įrašyk vardą (2–16 simbolių).")
 		final_lb_status.add_theme_color_override("font_color", T_MUTED)
 		return
+	_score_sending = true
+	var generation := _score_generation
+	var payload := _score_payload.duplicate(true)
+	payload["name"] = nm
+	final_name_edit.editable = false
 	final_send_btn.disabled = true
 	final_lb_status.text = Loc.t("Siunčiama…")
 	final_lb_status.add_theme_color_override("font_color", T_MUTED)
-	var res: Dictionary = await Leaderboard.submit(_score_row(nm))
+	var res: Dictionary = await Leaderboard.submit(payload)
+	if generation != _score_generation:
+		return
+	_score_sending = false
+	final_name_edit.editable = true
 	final_send_btn.disabled = false
 	if not bool(res["ok"]):
 		final_lb_status.text = str(res["msg"])
@@ -1505,14 +1543,23 @@ func _submit_score() -> void:
 	final_lb_status.text = Loc.t("Rezultatas įrašytas į geriausiųjų lentelę.")
 	final_lb_status.add_theme_color_override("font_color", T_GOOD)
 	var top_res: Dictionary = await Leaderboard.top(Leaderboard.MAX_ROWS)
-	if not bool(top_res["ok"]):
+	if generation != _score_generation or not bool(top_res["ok"]):
 		return
 	var rows: Array = top_res["rows"]
 	for i in rows.size():
-		if str(rows[i].get("name", "")).nocasecmp_to(nm) == 0:
+		if _matches_score(rows[i], payload):
 			final_lb_status.text = Loc.t("Tavo vieta lentelėje: #%d") % (i + 1)
 			final_lb_status.add_theme_color_override("font_color", T_GOLD)
 			return
+
+func _matches_score(row: Dictionary, submitted: Dictionary) -> bool:
+	# A nickname is not unique. Never report another run's higher position.
+	if str(row.get("name", "")) != str(submitted.get("name", "")):
+		return false
+	for field in ["score", "difficulty", "years", "circularity", "pollution"]:
+		if int(row.get(field, -1)) != int(submitted.get(field, -2)):
+			return false
+	return true
 
 func _build_intro(holder: Control) -> void:
 	intro_box = VBoxContainer.new()
@@ -1676,6 +1723,8 @@ func _build_lessons() -> void:
 
 ## Called by the game at every start.
 func start_learning(on: bool) -> void:
+	_learning_session+=1
+	var session:=_learning_session
 	_lessons_shown.clear()
 	_lesson_queue.clear()
 	_learning_ending = false
@@ -1685,7 +1734,9 @@ func start_learning(on: bool) -> void:
 	learn_badge.visible = on
 	lesson_dim.visible = false
 	if on:
-		get_tree().create_timer(0.6).timeout.connect(func(): show_lesson("intro"))
+		get_tree().create_timer(0.6).timeout.connect(func():
+			if session==_learning_session and game.running and game.learning:show_lesson("intro")
+		)
 
 func show_lesson(id: String) -> void:
 	if id in _lessons_shown or Learning.lesson(id).is_empty():
@@ -1913,6 +1964,9 @@ func _on_start_pressed() -> void:
 	game.start_game(selected_diff, tut_check.button_pressed or learn, learn)
 
 func show_start_overlay() -> void:
+	if _resume_btn!=null:
+		_resume_btn.visible=RunSave.available()
+		_new_game_btn.text=Loc.t("Naujas žaidimas") if _resume_btn.visible else Loc.t("PRADĖTI")
 	overlay.visible = true
 	# Open the TLS connection now, while nobody is waiting for it. Deferred: this
 	# may run from Game._ready(), where the tree is still being set up. Has to
@@ -1982,6 +2036,8 @@ func _fit_report_cards() -> void:
 func hide_report() -> void:
 	if report != null:
 		report.visible = false
+	for icon in card_icons:
+		icon.release_images()
 
 func show_final(s: Dictionary) -> void:
 	hide_panel()
@@ -2032,6 +2088,8 @@ func show_final(s: Dictionary) -> void:
 		final_text.text = Loc.t("Šiame žaidime pamatėme: linijinę ir žiedinę ekonomiką, pridėtinę vertę, pirminę ir antrinę žaliavą, išorinį poveikį, Pigou mokestį, masto ekonomiją, ekonomikos augimą, ES žiedinumo tikslus, alternatyviuosius kaštus, paklausą ir pasiūlą bei darbo rinką.")
 
 func hide_overlay() -> void:
+	_score_generation += 1
+	_score_sending = false
 	overlay.visible = false
 
 func set_paused(p: bool) -> void:

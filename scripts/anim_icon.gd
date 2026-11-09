@@ -10,6 +10,11 @@ var _t: float = 0.0
 var _perk: String = ""
 var _whole: bool = false
 
+func release_images() -> void:
+	sheet = null
+	_whole = false
+	queue_redraw()
+
 func _ready() -> void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
 	texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
